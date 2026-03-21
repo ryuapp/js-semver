@@ -1,0 +1,27 @@
+[package]
+name = "js-semver"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Parser and evaluator for semantic versioning in JavaScript, such as Node.js and Deno"
+license = "MIT-0"
+repository = "https://github.com/ryuapp/js-semver"
+keywords = ["semver", "nodejs", "deno"]
+categories = ["no-std"]
+include = [
+    "src/**/*",
+    "tests/**/*",
+    "LICENSE",
+    "README.md",
+]
+
+[features]
+default = ["std"]
+std = []
+serde = ["dep:serde"]
+
+[dependencies]
+serde = { package = "serde_core", version = "^1.0.220", optional = true }
+
+[dev-dependencies]
+serde_json = "1"
