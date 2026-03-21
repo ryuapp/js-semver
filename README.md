@@ -5,8 +5,9 @@
 [![github repo](https://img.shields.io/badge/GitHub-ryuapp/js--semver-171717?labelColor=171717&color=39b54a)](https://github.com/ryuapp/js-semver)
 [![codecov](https://codecov.io/gh/ryuapp/js-semver/graph/badge.svg?token=P7NMEB4IP7)](https://codecov.io/gh/ryuapp/js-semver)
 
-A parser and evaluator for semantic versioning in JavaScript, such as Node.js and Deno.\
-It's a crate for the JavaScript ecosystem, designed to maintain minimal dependencies.
+A parser and evaluator for semantic versioning in JavaScript, including Node.js and Deno.
+
+This crate is designed for the JavaScript ecosystem. It maintains high compatibility with the behavior of [node-semver](https://github.com/npm/node-semver) (the one npm uses) and has zero dependencies by default.
 
 ## Example
 
@@ -30,6 +31,16 @@ fn main() {
     assert!(range.satisfies(&version));
 }
 ```
+
+## Comparison with other crates
+
+### node-semver
+
+[node-semver](https://crates.io/crates/node-semver) crate has numerous issues, including unnecessary dependencies like `miette`, incompatibilities with npm's [node-semver](https://github.com/npm/node-semver), and the fact that it is no longer actively maintained.
+
+### semver
+
+[semver](https://crates.io/crates/semver) crate is designed for Cargo. Therefore, it is not well-suited for the Node.js ecosystem, such as parsing versions in `package.json`.
 
 ## License
 

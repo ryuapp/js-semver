@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
 #![deny(clippy::wildcard_imports)]
-//! A parser and evaluator for semantic versioning in JavaScript, such as Node.js and Deno.
+//! A parser and evaluator for semantic versioning in JavaScript, including Node.js and Deno.
 //!
 //! # Examples
 //!
