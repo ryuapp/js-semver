@@ -25,3 +25,20 @@ serde = { package = "serde_core", version = "^1.0.220", optional = true }
 
 [dev-dependencies]
 serde_json = "1"
+
+[lints.clippy]
+# Enable all lint groups
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+
+# Panic prevention (deny in production code)
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unwrap_in_result = "deny"
+
+exit = "deny"
+wildcard_imports = "deny"
