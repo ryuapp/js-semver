@@ -44,6 +44,7 @@ impl Ord for PreReleaseIdentifier {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// A parsed pre-release identifier list such as `alpha.1`.
 pub struct PreRelease(Box<[PreReleaseIdentifier]>);
 
 impl PreRelease {
@@ -70,6 +71,7 @@ impl PreRelease {
     }
 
     #[must_use]
+    /// Returns `true` when there are no pre-release identifiers.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -78,7 +80,7 @@ impl PreRelease {
         for (left, right) in self.0.iter().zip(other.0.iter()) {
             match left.cmp(right) {
                 Ordering::Equal => {}
-                ord => return ord,
+                ord @ (Ordering::Less | Ordering::Greater) => return ord,
             }
         }
         self.0.len().cmp(&other.0.len())
@@ -128,6 +130,7 @@ impl FromStr for PreRelease {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// Parsed build metadata such as `build.42`.
 pub struct BuildMetadata(Box<[Box<str>]>);
 
 impl BuildMetadata {
@@ -150,10 +153,12 @@ impl BuildMetadata {
     }
 
     #[must_use]
+    /// Returns `true` when there is no build metadata.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Returns an iterator over build metadata identifiers.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
         self.0.iter().map(Box::as_ref)
     }
@@ -192,10 +197,15 @@ impl FromStr for BuildMetadata {
 /// Build metadata is stored but ignored during comparison and equality checks.
 #[derive(Debug, Clone, Eq)]
 pub struct Version {
+    /// The major version number.
     pub major: u64,
+    /// The minor version number.
     pub minor: u64,
+    /// The patch version number.
     pub patch: u64,
+    /// The pre-release identifiers, if any.
     pub pre_release: PreRelease,
+    /// The build metadata identifiers, if any.
     pub build: BuildMetadata,
 }
 
@@ -400,12 +410,19 @@ impl FromStr for Version {
 /// The type of increment to apply to a version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReleaseType {
+    /// Increment the major version.
     Major,
+    /// Increment the minor version.
     Minor,
+    /// Increment the patch version.
     Patch,
+    /// Increment to the next pre-major version, optionally using a custom identifier prefix.
     PreMajor(Option<String>),
+    /// Increment to the next pre-minor version, optionally using a custom identifier prefix.
     PreMinor(Option<String>),
+    /// Increment to the next pre-patch version, optionally using a custom identifier prefix.
     PrePatch(Option<String>),
+    /// Increment the pre-release identifiers, optionally using a custom identifier prefix.
     PreRelease(Option<String>),
 }
 
@@ -497,7 +514,7 @@ fn parse_nr_at(b: &[u8], pos: &mut usize, ctx: &str) -> Result<u64, SemverError>
     Ok(n)
 }
 
-pub fn parse_nr(s: &str) -> Result<u64, SemverError> {
+pub(crate) fn parse_nr(s: &str) -> Result<u64, SemverError> {
     let b = s.as_bytes();
     if b.is_empty() {
         return Err(SemverError::new("empty number"));
@@ -526,7 +543,7 @@ pub fn parse_nr(s: &str) -> Result<u64, SemverError> {
     Ok(n)
 }
 
-pub fn parse_pre_release(s: &str) -> Result<PreRelease, SemverError> {
+pub(crate) fn parse_pre_release(s: &str) -> Result<PreRelease, SemverError> {
     s.split('.')
         .map(parse_pre_id)
         .collect::<Result<Vec<_>, _>>()
@@ -582,6 +599,85 @@ fn parse_pre_id(part: &str) -> Result<PreReleaseIdentifier, SemverError> {
     } else {
         Ok(PreReleaseIdentifier::AlphaNumeric(Box::from(part)))
     }
+}
+
+// --------------------------------------------------------------------------
+// Version increment (internal)
+// --------------------------------------------------------------------------
+
+fn increment_version(v: &Version, release: ReleaseType) -> Result<Version, SemverError> {
+    let base_pre = |id: Option<String>| -> Result<PreRelease, SemverError> {
+        match id.as_deref() {
+            Some(s) if !s.is_empty() => parse_pre_release(&format!("{s}.0")),
+            _ => Ok(PreRelease::zero()),
+        }
+    };
+
+    Ok(match release {
+        ReleaseType::Major => {
+            let new_major = if v.minor == 0 && v.patch == 0 && !v.pre_release.is_empty() {
+                v.major
+            } else {
+                v.major + 1
+            };
+            Version::new(new_major, 0, 0)
+        }
+        ReleaseType::Minor => {
+            let new_minor = if v.patch == 0 && !v.pre_release.is_empty() {
+                v.minor
+            } else {
+                v.minor + 1
+            };
+            Version::new(v.major, new_minor, 0)
+        }
+        ReleaseType::Patch => {
+            if v.pre_release.is_empty() {
+                Version::new(v.major, v.minor, v.patch + 1)
+            } else {
+                Version::new(v.major, v.minor, v.patch)
+            }
+        }
+        ReleaseType::PreMajor(id) => Version {
+            major: v.major + 1,
+            minor: 0,
+            patch: 0,
+            pre_release: base_pre(id)?,
+            build: BuildMetadata::default(),
+        },
+        ReleaseType::PreMinor(id) => Version {
+            major: v.major,
+            minor: v.minor + 1,
+            patch: 0,
+            pre_release: base_pre(id)?,
+            build: BuildMetadata::default(),
+        },
+        ReleaseType::PrePatch(id) => Version {
+            major: v.major,
+            minor: v.minor,
+            patch: v.patch + 1,
+            pre_release: base_pre(id)?,
+            build: BuildMetadata::default(),
+        },
+        ReleaseType::PreRelease(id) => {
+            if v.pre_release.is_empty() {
+                Version {
+                    major: v.major,
+                    minor: v.minor,
+                    patch: v.patch + 1,
+                    pre_release: base_pre(id)?,
+                    build: BuildMetadata::default(),
+                }
+            } else {
+                Version {
+                    major: v.major,
+                    minor: v.minor,
+                    patch: v.patch,
+                    pre_release: v.pre_release.increment_last_numeric_or_append(),
+                    build: BuildMetadata::default(),
+                }
+            }
+        }
+    })
 }
 
 // --------------------------------------------------------------------------
@@ -655,7 +751,7 @@ mod tests {
     #[test]
     fn comparators_gt_gte_lt_lte_eq_neq() {
         assert!(v("2.0.0") > v("1.0.0"));
-        assert!(!(v("1.0.0") > v("2.0.0")));
+        assert!(v("1.0.0") <= v("2.0.0"));
         assert!(v("1.0.0") >= v("1.0.0"));
         assert!(v("1.0.0") < v("2.0.0"));
         assert!(v("1.0.0") <= v("1.0.0"));
@@ -1130,83 +1226,4 @@ mod tests {
         assert!(parse_nr("9007199254740992").is_err());
         assert!(parse_nr("12345678901234567").is_err());
     }
-}
-
-// --------------------------------------------------------------------------
-// Version increment (internal)
-// --------------------------------------------------------------------------
-
-fn increment_version(v: &Version, release: ReleaseType) -> Result<Version, SemverError> {
-    let base_pre = |id: Option<String>| -> Result<PreRelease, SemverError> {
-        match id.as_deref() {
-            Some(s) if !s.is_empty() => parse_pre_release(&format!("{s}.0")),
-            _ => Ok(PreRelease::zero()),
-        }
-    };
-
-    Ok(match release {
-        ReleaseType::Major => {
-            let new_major = if v.minor == 0 && v.patch == 0 && !v.pre_release.is_empty() {
-                v.major
-            } else {
-                v.major + 1
-            };
-            Version::new(new_major, 0, 0)
-        }
-        ReleaseType::Minor => {
-            let new_minor = if v.patch == 0 && !v.pre_release.is_empty() {
-                v.minor
-            } else {
-                v.minor + 1
-            };
-            Version::new(v.major, new_minor, 0)
-        }
-        ReleaseType::Patch => {
-            if v.pre_release.is_empty() {
-                Version::new(v.major, v.minor, v.patch + 1)
-            } else {
-                Version::new(v.major, v.minor, v.patch)
-            }
-        }
-        ReleaseType::PreMajor(id) => Version {
-            major: v.major + 1,
-            minor: 0,
-            patch: 0,
-            pre_release: base_pre(id)?,
-            build: BuildMetadata::default(),
-        },
-        ReleaseType::PreMinor(id) => Version {
-            major: v.major,
-            minor: v.minor + 1,
-            patch: 0,
-            pre_release: base_pre(id)?,
-            build: BuildMetadata::default(),
-        },
-        ReleaseType::PrePatch(id) => Version {
-            major: v.major,
-            minor: v.minor,
-            patch: v.patch + 1,
-            pre_release: base_pre(id)?,
-            build: BuildMetadata::default(),
-        },
-        ReleaseType::PreRelease(id) => {
-            if v.pre_release.is_empty() {
-                Version {
-                    major: v.major,
-                    minor: v.minor,
-                    patch: v.patch + 1,
-                    pre_release: base_pre(id)?,
-                    build: BuildMetadata::default(),
-                }
-            } else {
-                Version {
-                    major: v.major,
-                    minor: v.minor,
-                    patch: v.patch,
-                    pre_release: v.pre_release.increment_last_numeric_or_append(),
-                    build: BuildMetadata::default(),
-                }
-            }
-        }
-    })
 }

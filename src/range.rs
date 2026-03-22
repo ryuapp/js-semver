@@ -13,16 +13,16 @@ use crate::{MAX_LENGTH, SemverError};
 
 /// Comparison operator used in a version comparator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Operator {
-    /// `<` — less than
+enum Operator {
+    /// `<` — less than.
     LessThan,
-    /// `<=` — less than or equal to
+    /// `<=` — less than or equal to.
     LessThanOrEqual,
-    /// `>` — greater than
+    /// `>` — greater than.
     GreaterThan,
-    /// `>=` — greater than or equal to
+    /// `>=` — greater than or equal to.
     GreaterThanOrEqual,
-    /// `=` — exactly equal
+    /// `=` — exactly equal.
     Equal,
 }
 
@@ -317,7 +317,7 @@ const fn c_eq(ver: Version) -> Comparator {
 // Range expansion helpers
 // --------------------------------------------------------------------------
 
-/// Expand a tilde range: `~1.2.3` → `>=1.2.3 <1.3.0`
+/// Expand a tilde range: `~1.2.3` → `>=1.2.3 <1.3.0`.
 fn expand_tilde(p: Partial) -> Vec<Comparator> {
     match (p.major, p.minor, p.patch) {
         (None, _, _) => vec![],
@@ -334,7 +334,7 @@ fn expand_tilde(p: Partial) -> Vec<Comparator> {
     }
 }
 
-/// Expand a caret range: `^1.2.3` → `>=1.2.3 <2.0.0`
+/// Expand a caret range: `^1.2.3` → `>=1.2.3 <2.0.0`.
 fn expand_caret(p: Partial) -> Vec<Comparator> {
     match (p.major, p.minor, p.patch) {
         (None, _, _) => vec![],

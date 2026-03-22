@@ -5,27 +5,27 @@ use crate::range::Range;
 use crate::version::Version;
 
 impl serde::Serialize for Version {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&self.to_string())
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Version {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = <&str as serde::Deserialize>::deserialize(d)?;
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = <&str as serde::Deserialize>::deserialize(deserializer)?;
         s.parse().map_err(serde::de::Error::custom)
     }
 }
 
 impl serde::Serialize for Range {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&self.to_string())
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Range {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = <&str as serde::Deserialize>::deserialize(d)?;
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = <&str as serde::Deserialize>::deserialize(deserializer)?;
         s.parse().map_err(serde::de::Error::custom)
     }
 }
