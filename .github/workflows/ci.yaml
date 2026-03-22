@@ -33,7 +33,7 @@ jobs:
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
-      - run: cargo clippy --all-features -- -D warnings
+      - run: cargo clippy --all-targets --all-features -- -D warnings
 
   coverage:
     runs-on: ubuntu-latest

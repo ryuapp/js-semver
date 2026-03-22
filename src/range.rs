@@ -13,7 +13,7 @@ use crate::{MAX_LENGTH, SemverError};
 
 /// Comparison operator used in a version comparator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Operator {
+enum Operator {
     /// `<` — less than
     LessThan,
     /// `<=` — less than or equal to

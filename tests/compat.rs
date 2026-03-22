@@ -1,3 +1,4 @@
+#![allow(clippy::restriction)]
 //! Compatibility tests with semver on npm.
 
 use js_semver::{Range, ReleaseType, Version};

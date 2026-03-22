@@ -44,6 +44,7 @@ impl Ord for PreReleaseIdentifier {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// A parsed pre-release identifier list such as `alpha.1`.
 pub struct PreRelease(Box<[PreReleaseIdentifier]>);
 
 impl PreRelease {
@@ -70,6 +71,7 @@ impl PreRelease {
     }
 
     #[must_use]
+    /// Returns `true` when there are no pre-release identifiers.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -78,7 +80,7 @@ impl PreRelease {
         for (left, right) in self.0.iter().zip(other.0.iter()) {
             match left.cmp(right) {
                 Ordering::Equal => {}
-                ord => return ord,
+                ord @ (Ordering::Less | Ordering::Greater) => return ord,
             }
         }
         self.0.len().cmp(&other.0.len())
@@ -128,6 +130,7 @@ impl FromStr for PreRelease {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// Parsed build metadata such as `build.42`.
 pub struct BuildMetadata(Box<[Box<str>]>);
 
 impl BuildMetadata {
@@ -150,10 +153,12 @@ impl BuildMetadata {
     }
 
     #[must_use]
+    /// Returns `true` when there is no build metadata.
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
+    /// Returns an iterator over build metadata identifiers.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
         self.0.iter().map(Box::as_ref)
     }
@@ -192,10 +197,15 @@ impl FromStr for BuildMetadata {
 /// Build metadata is stored but ignored during comparison and equality checks.
 #[derive(Debug, Clone, Eq)]
 pub struct Version {
+    /// The major version number.
     pub major: u64,
+    /// The minor version number.
     pub minor: u64,
+    /// The patch version number.
     pub patch: u64,
+    /// The pre-release identifiers, if any.
     pub pre_release: PreRelease,
+    /// The build metadata identifiers, if any.
     pub build: BuildMetadata,
 }
 
@@ -400,12 +410,19 @@ impl FromStr for Version {
 /// The type of increment to apply to a version.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReleaseType {
+    /// Increment the major version.
     Major,
+    /// Increment the minor version.
     Minor,
+    /// Increment the patch version.
     Patch,
+    /// Increment to the next pre-major version, optionally using a custom identifier prefix.
     PreMajor(Option<String>),
+    /// Increment to the next pre-minor version, optionally using a custom identifier prefix.
     PreMinor(Option<String>),
+    /// Increment to the next pre-patch version, optionally using a custom identifier prefix.
     PrePatch(Option<String>),
+    /// Increment the pre-release identifiers, optionally using a custom identifier prefix.
     PreRelease(Option<String>),
 }
 
@@ -497,7 +514,7 @@ fn parse_nr_at(b: &[u8], pos: &mut usize, ctx: &str) -> Result<u64, SemverError>
     Ok(n)
 }
 
-pub fn parse_nr(s: &str) -> Result<u64, SemverError> {
+pub(crate) fn parse_nr(s: &str) -> Result<u64, SemverError> {
     let b = s.as_bytes();
     if b.is_empty() {
         return Err(SemverError::new("empty number"));
@@ -526,7 +543,7 @@ pub fn parse_nr(s: &str) -> Result<u64, SemverError> {
     Ok(n)
 }
 
-pub fn parse_pre_release(s: &str) -> Result<PreRelease, SemverError> {
+pub(crate) fn parse_pre_release(s: &str) -> Result<PreRelease, SemverError> {
     s.split('.')
         .map(parse_pre_id)
         .collect::<Result<Vec<_>, _>>()

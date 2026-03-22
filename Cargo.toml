@@ -26,11 +26,46 @@ serde = { package = "serde_core", version = "^1.0.220", optional = true }
 [dev-dependencies]
 serde_json = "1"
 
+[lints.rust]
+unreachable_pub = "deny"
+unused_qualifications = "deny"
+missing_docs = "deny"
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+unit_bindings = "deny"
+unnameable_types = "deny"
+
 [lints.clippy]
 # Enable all lint groups
-all = { level = "warn", priority = -1 }
-pedantic = { level = "warn", priority = -1 }
-cargo = { level = "warn", priority = -1 }
+all = { level = "warn", priority = -2 }
+pedantic = { level = "warn", priority = -2 }
+cargo = { level = "warn", priority = -2 }
+restriction = { level = "warn", priority = -1 }
+
+blanket_clippy_restriction_lints = "allow"
+implicit_return = "allow"
+question_mark_used = "allow"
+missing_docs_in_private_items = "allow"
+missing_inline_in_public_items = "allow"
+missing_trait_methods = "allow"
+min_ident_chars = "allow"
+pub_use = "allow"
+pub_with_shorthand = "allow"
+absolute_paths = "allow"
+arbitrary_source_item_ordering = "allow"
+single_char_lifetime_names = "allow"
+pattern_type_mismatch = "allow"
+decimal_literal_representation = "allow"
+unseparated_literal_suffix = "allow"
+std_instead_of_core = "allow"
+shadow_reuse = "allow"
+string_slice = "allow"
+arithmetic_side_effects = "allow"
+indexing_slicing = "allow"
+map_err_ignore = "allow"
+exhaustive_enums = "allow"
+exhaustive_structs = "allow"
+single_call_fn = "allow"
 
 # Panic prevention (deny in production code)
 unwrap_used = "deny"
@@ -42,3 +77,6 @@ unwrap_in_result = "deny"
 
 exit = "deny"
 wildcard_imports = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
