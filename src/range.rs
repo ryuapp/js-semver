@@ -87,7 +87,7 @@ impl ComparatorSet {
     }
 }
 
-/// A version range, e.g. `^1.0.0` or `>=1.0.0 <2.0.0`.
+/// A version range, e.g. `^1.0.0` or `>=1.0.0 <2.0.0-0`.
 #[derive(Debug, Clone)]
 pub struct Range {
     set: Vec<ComparatorSet>,
@@ -313,39 +313,45 @@ const fn c_eq(ver: Version) -> Comparator {
     }
 }
 
+fn c_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
+    c_lt(vp(major, minor, patch, PreRelease::zero()))
+}
+
 // --------------------------------------------------------------------------
 // Range expansion helpers
 // --------------------------------------------------------------------------
 
-/// Expand a tilde range: `~1.2.3` → `>=1.2.3 <1.3.0`.
+/// Expand a tilde range: `~1.2.3` → `>=1.2.3 <1.3.0-0`.
 fn expand_tilde(p: Partial) -> Vec<Comparator> {
     match (p.major, p.minor, p.patch) {
         (None, _, _) => vec![],
-        (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0)), c_lt(v(maj + 1, 0, 0))],
-        (Some(maj), Some(mnr), None) => vec![c_gte(v(maj, mnr, 0)), c_lt(v(maj, mnr + 1, 0))],
+        (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0)), c_lt_upper_bound(maj + 1, 0, 0)],
+        (Some(maj), Some(mnr), None) => {
+            vec![c_gte(v(maj, mnr, 0)), c_lt_upper_bound(maj, mnr + 1, 0)]
+        }
         (Some(maj), Some(mnr), Some(patch)) => {
             let floor = if p.pre_release.is_empty() {
                 v(maj, mnr, patch)
             } else {
                 vp(maj, mnr, patch, p.pre_release)
             };
-            vec![c_gte(floor), c_lt(v(maj, mnr + 1, 0))]
+            vec![c_gte(floor), c_lt_upper_bound(maj, mnr + 1, 0)]
         }
     }
 }
 
-/// Expand a caret range: `^1.2.3` → `>=1.2.3 <2.0.0`.
+/// Expand a caret range: `^1.2.3` → `>=1.2.3 <2.0.0-0`.
 fn expand_caret(p: Partial) -> Vec<Comparator> {
     match (p.major, p.minor, p.patch) {
         (None, _, _) => vec![],
-        (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0)), c_lt(v(maj + 1, 0, 0))],
+        (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0)), c_lt_upper_bound(maj + 1, 0, 0)],
         (Some(maj), Some(mnr), None) => {
             if maj > 0 {
-                vec![c_gte(v(maj, mnr, 0)), c_lt(v(maj + 1, 0, 0))]
+                vec![c_gte(v(maj, mnr, 0)), c_lt_upper_bound(maj + 1, 0, 0)]
             } else if mnr > 0 {
-                vec![c_gte(v(0, mnr, 0)), c_lt(v(0, mnr + 1, 0))]
+                vec![c_gte(v(0, mnr, 0)), c_lt_upper_bound(0, mnr + 1, 0)]
             } else {
-                vec![c_gte(v(0, 0, 0)), c_lt(v(0, 1, 0))]
+                vec![c_gte(v(0, 0, 0)), c_lt_upper_bound(0, 1, 0)]
             }
         }
         (Some(maj), Some(mnr), Some(patch)) => {
@@ -355,11 +361,11 @@ fn expand_caret(p: Partial) -> Vec<Comparator> {
                 vp(maj, mnr, patch, p.pre_release)
             };
             if maj > 0 {
-                vec![c_gte(floor), c_lt(v(maj + 1, 0, 0))]
+                vec![c_gte(floor), c_lt_upper_bound(maj + 1, 0, 0)]
             } else if mnr > 0 {
-                vec![c_gte(floor), c_lt(v(0, mnr + 1, 0))]
+                vec![c_gte(floor), c_lt_upper_bound(0, mnr + 1, 0)]
             } else {
-                vec![c_gte(floor), c_lt(v(0, 0, patch + 1))]
+                vec![c_gte(floor), c_lt_upper_bound(0, 0, patch + 1)]
             }
         }
     }
@@ -371,8 +377,10 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
         // No operator or `=` → exact or x-range
         None | Some(Operator::Equal) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![],
-            (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0)), c_lt(v(maj + 1, 0, 0))],
-            (Some(maj), Some(mnr), None) => vec![c_gte(v(maj, mnr, 0)), c_lt(v(maj, mnr + 1, 0))],
+            (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0)), c_lt_upper_bound(maj + 1, 0, 0)],
+            (Some(maj), Some(mnr), None) => {
+                vec![c_gte(v(maj, mnr, 0)), c_lt_upper_bound(maj, mnr + 1, 0)]
+            }
             (Some(maj), Some(mnr), Some(patch)) => {
                 let ver = if p.pre_release.is_empty() {
                     v(maj, mnr, patch)
@@ -423,8 +431,8 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
         },
         Some(Operator::LessThanOrEqual) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![],
-            (Some(maj), None, _) => vec![c_lt(v(maj + 1, 0, 0))],
-            (Some(maj), Some(mnr), None) => vec![c_lt(v(maj, mnr + 1, 0))],
+            (Some(maj), None, _) => vec![c_lt_upper_bound(maj + 1, 0, 0)],
+            (Some(maj), Some(mnr), None) => vec![c_lt_upper_bound(maj, mnr + 1, 0)],
             (Some(maj), Some(mnr), Some(patch)) => {
                 let ver = if p.pre_release.is_empty() {
                     v(maj, mnr, patch)
@@ -442,8 +450,8 @@ fn expand_hyphen(a: Partial, b: Partial) -> Vec<Comparator> {
     let lower = c_gte(a.floor());
     let upper = match (b.major, b.minor, b.patch) {
         (None, _, _) => None,
-        (Some(maj), None, _) => Some(c_lt(v(maj + 1, 0, 0))),
-        (Some(maj), Some(mnr), None) => Some(c_lt(v(maj, mnr + 1, 0))),
+        (Some(maj), None, _) => Some(c_lt_upper_bound(maj + 1, 0, 0)),
+        (Some(maj), Some(mnr), None) => Some(c_lt_upper_bound(maj, mnr + 1, 0)),
         (Some(maj), Some(mnr), Some(patch)) => {
             let ver = if b.pre_release.is_empty() {
                 v(maj, mnr, patch)
@@ -820,7 +828,7 @@ mod tests {
     fn parse_static_and_display() {
         // Display outputs canonical form (expanded comparators)
         let range = Range::parse("^1.0.0").unwrap();
-        assert_eq!(range.to_string(), ">=1.0.0 <2.0.0");
+        assert_eq!(range.to_string(), ">=1.0.0 <2.0.0-0");
         assert!(Range::parse(">=1.0.0 <2.0.0").is_ok());
     }
 
@@ -828,10 +836,10 @@ mod tests {
 
     #[test]
     fn tilde_partial() {
-        // ~1 → >=1.0.0 <2.0.0
+        // ~1 → >=1.0.0 <2.0.0-0
         assert!(r("~1").satisfies(&v("1.9.9")));
         assert!(!r("~1").satisfies(&v("2.0.0")));
-        // ~1.2 → >=1.2.0 <1.3.0
+        // ~1.2 → >=1.2.0 <1.3.0-0
         assert!(r("~1.2").satisfies(&v("1.2.9")));
         assert!(!r("~1.2").satisfies(&v("1.3.0")));
         // ~1.2.3 with pre-release floor
@@ -841,7 +849,7 @@ mod tests {
 
     #[test]
     fn caret_partial() {
-        // ^1 → >=1.0.0 <2.0.0
+        // ^1 → >=1.0.0 <2.0.0-0
         assert!(r("^1").satisfies(&v("1.9.9")));
         assert!(!r("^1").satisfies(&v("2.0.0")));
         // ^0.2 → >=0.2.0 <0.3.0
@@ -877,7 +885,7 @@ mod tests {
         assert!(!r("<1").satisfies(&v("1.0.0")));
         // <1.2 → <1.2.0
         assert!(r("<1.2").satisfies(&v("1.1.9")));
-        // <=1.2 → <1.3.0
+        // <=1.2 → <1.3.0-0
         assert!(r("<=1.2").satisfies(&v("1.2.9")));
         assert!(!r("<=1.2").satisfies(&v("1.3.0")));
     }
@@ -957,7 +965,7 @@ mod tests {
 
     #[test]
     fn caret_major_minor() {
-        // ^1.2 with maj>0 → >=1.2.0 <2.0.0
+        // ^1.2 with maj>0 → >=1.2.0 <2.0.0-0
         assert!(r("^1.2").satisfies(&v("1.9.9")));
         assert!(!r("^1.2").satisfies(&v("2.0.0")));
     }
@@ -969,7 +977,7 @@ mod tests {
         // >=1 → >=1.0.0
         assert!(r(">=1").satisfies(&v("1.0.0")));
         assert!(!r(">=1").satisfies(&v("0.9.9")));
-        // <=1 → <2.0.0
+        // <=1 → <2.0.0-0
         assert!(r("<=1").satisfies(&v("1.9.9")));
         assert!(!r("<=1").satisfies(&v("2.0.0")));
     }
@@ -997,7 +1005,7 @@ mod tests {
     fn hyphen_partial_upper() {
         // upper = * (None major) → no upper bound
         assert!(r("1.0.0 - *").satisfies(&v("99.0.0")));
-        // upper = 2 (major only) → <3.0.0
+        // upper = 2 (major only) → <3.0.0-0
         assert!(r("1.0.0 - 2").satisfies(&v("2.9.9")));
         assert!(!r("1.0.0 - 2").satisfies(&v("3.0.0")));
         // upper = 2.5 (major.minor) → <2.6.0
@@ -1108,7 +1116,7 @@ mod tests {
         assert_eq!(Range::parse("*").unwrap().to_string(), "*");
         assert_eq!(
             Range::parse("* || ^1.2.3").unwrap().to_string(),
-            "* || >=1.2.3 <2.0.0"
+            "* || >=1.2.3 <2.0.0-0"
         );
         assert_eq!(
             Range::parse(">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0")
@@ -1124,7 +1132,7 @@ mod tests {
         assert!(try_hyphen("1.0.0 - <=2.0.0").unwrap().is_none());
         assert_eq!(
             Range::parse("^ 1.2.3").unwrap().to_string(),
-            ">=1.2.3 <2.0.0"
+            ">=1.2.3 <2.0.0-0"
         );
     }
 
@@ -1152,5 +1160,15 @@ mod tests {
         assert!(try_hyphen("1.2.3").unwrap().is_none());
         assert!(try_hyphen("1.2.3 -").unwrap().is_none());
         assert!(try_hyphen("- 1.2.3").unwrap().is_none());
+    }
+
+    #[test]
+    fn prerelease_zero_upper_bound_excludes_next_tuple_prereleases() {
+        let range = r("^1.2.3");
+        assert_eq!(range.to_string(), ">=1.2.3 <2.0.0-0");
+        assert!(range.satisfies(&v("1.9.9")));
+        assert!(!range.satisfies(&v("2.0.0-0")));
+        assert!(!range.satisfies(&v("2.0.0-alpha")));
+        assert!(!range.satisfies(&v("2.0.0")));
     }
 }
