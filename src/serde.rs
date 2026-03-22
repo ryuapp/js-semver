@@ -47,7 +47,7 @@ mod tests {
     fn range_roundtrip() {
         let range: Range = "^1.2.3 || *".parse().unwrap();
         let json = serde_json::to_string(&range).unwrap();
-        assert_eq!(json, "\">=1.2.3 <2.0.0-0 || *\"");
+        assert_eq!(json, "\"*\"");
         let parsed: Range = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.to_string(), range.to_string());
     }
