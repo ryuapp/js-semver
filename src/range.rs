@@ -995,7 +995,10 @@ mod tests {
         assert!(r("~1").satisfies(&v("1.9.9")));
         assert!(!r("~1").satisfies(&v("2.0.0")));
         assert_eq!(Range::parse("~0.x.0").unwrap().to_string(), "<1.0.0-0");
-        assert_eq!(Range::parse("~1.x.0").unwrap().to_string(), ">=1.0.0 <2.0.0-0");
+        assert_eq!(
+            Range::parse("~1.x.0").unwrap().to_string(),
+            ">=1.0.0 <2.0.0-0"
+        );
         // ~1.2 → >=1.2.0 <1.3.0-0
         assert!(r("~1.2").satisfies(&v("1.2.9")));
         assert!(!r("~1.2").satisfies(&v("1.3.0")));
