@@ -42,5 +42,5 @@ mod serde;
 mod version;
 
 pub use error::SemverError;
-pub use range::{Operator, Range};
+pub use range::Range;
 pub use version::{BuildMetadata, PreRelease, ReleaseType, Version};
