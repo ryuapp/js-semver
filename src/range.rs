@@ -46,12 +46,13 @@ struct Comparator {
 
 impl Comparator {
     fn test(&self, v: &Version) -> bool {
+        let cmp = compare_core_and_prerelease(v, &self.version);
         match self.op {
-            Operator::Equal => v == &self.version,
-            Operator::GreaterThan => v > &self.version,
-            Operator::GreaterThanOrEqual => v >= &self.version,
-            Operator::LessThan => v < &self.version,
-            Operator::LessThanOrEqual => v <= &self.version,
+            Operator::Equal => cmp == core::cmp::Ordering::Equal,
+            Operator::GreaterThan => cmp == core::cmp::Ordering::Greater,
+            Operator::GreaterThanOrEqual => cmp != core::cmp::Ordering::Less,
+            Operator::LessThan => cmp == core::cmp::Ordering::Less,
+            Operator::LessThanOrEqual => cmp != core::cmp::Ordering::Greater,
         }
     }
 }
@@ -78,18 +79,31 @@ impl ComparatorSet {
         if self.comparators.is_empty() {
             return true; // '*' matches everything
         }
-        if !self.comparators.iter().all(|c| c.test(v)) {
-            return false;
+
+        if v.pre_release.is_empty() {
+            for comparator in &self.comparators {
+                if !comparator.test(v) {
+                    return false;
+                }
+            }
+            return true;
         }
-        if !v.pre_release.is_empty() {
-            return self.comparators.iter().any(|c| {
-                c.version.major == v.major
-                    && c.version.minor == v.minor
-                    && c.version.patch == v.patch
-                    && !c.version.pre_release.is_empty()
-            });
+
+        let mut has_matching_prerelease_tuple = false;
+        for comparator in &self.comparators {
+            if !comparator.test(v) {
+                return false;
+            }
+            let comparator_version = &comparator.version;
+            if !comparator_version.pre_release.is_empty()
+                && comparator_version.major == v.major
+                && comparator_version.minor == v.minor
+                && comparator_version.patch == v.patch
+            {
+                has_matching_prerelease_tuple = true;
+            }
         }
-        true
+        has_matching_prerelease_tuple
     }
 }
 
@@ -112,7 +126,12 @@ impl Range {
     /// Returns `true` if `v` satisfies this range (any comparator set matches).
     #[must_use]
     pub fn satisfies(&self, v: &Version) -> bool {
-        self.set.iter().any(|cs| cs.test(v))
+        for comparator_set in &self.set {
+            if comparator_set.test(v) {
+                return true;
+            }
+        }
+        false
     }
 
     /// Returns `true` if this range intersects with `other`.
@@ -128,7 +147,7 @@ impl Range {
         if self.satisfies(&v000) {
             return Some(v000);
         }
-        let v000_pre = vp(0, 0, 0, PreRelease::zero());
+        let v000_pre = prerelease_version(0, 0, 0, PreRelease::zero());
         if self.satisfies(&v000_pre) {
             return Some(v000_pre);
         }
@@ -212,33 +231,47 @@ impl Partial {
 
 fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     let s = s.trim();
-    let (s_no_build, _) = split_first(s, '+');
-    let (version_core, pre_part) = split_first(s_no_build, '-');
+    let bytes = s.as_bytes();
+    let mut core_end = bytes.len();
+    let mut pre_start = None;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                core_end = i;
+                break;
+            }
+            b'-' if pre_start.is_none() => pre_start = Some(i + 1),
+            _ => {}
+        }
+        i += 1;
+    }
+    let version_end = pre_start.map_or(core_end, |start| start - 1);
+    let version_core = &s[..version_end];
+    let pre_part = pre_start.map(|start| &s[start..core_end]);
 
     if version_core.is_empty() && pre_part.is_some() {
         return Err(SemverError::new(format!("invalid version: {s}")));
     }
-    if !version_core.is_empty() && version_core.ends_with('.') {
+    if bytes.get(version_end.wrapping_sub(1)) == Some(&b'.') {
         return Err(SemverError::new(format!("trailing dot in: {s}")));
     }
-    // Parse up to 3 dot-separated components; reject a 4th to avoid Vec allocation.
-    let mut dots = version_core.splitn(4, '.');
-    let major = parse_xr(dots.next().unwrap_or(""))?;
-    let minor = if let Some(t) = dots.next() {
-        parse_xr(t)?
-    } else {
-        None
+
+    let (dot1, dot2) = find_component_dots(bytes, version_end, s)?;
+
+    let major = parse_xr(match dot1 {
+        Some(end) => &s[..end],
+        None => version_core,
+    })?;
+    let minor = match (dot1, dot2) {
+        (Some(start), Some(end)) => parse_xr(&s[start + 1..end])?,
+        (Some(start), None) => parse_xr(&s[start + 1..version_end])?,
+        (None, _) => None,
     };
-    let patch = if let Some(t) = dots.next() {
-        parse_xr(t)?
-    } else {
-        None
+    let patch = match dot2 {
+        Some(start) => parse_xr(&s[start + 1..version_end])?,
+        None => None,
     };
-    if dots.next().is_some() {
-        return Err(SemverError::new(format!(
-            "too many version components: {s}"
-        )));
-    }
 
     let pre_release = if patch.is_some() {
         match pre_part {
@@ -265,20 +298,40 @@ fn parse_xr(s: &str) -> Result<Option<u64>, SemverError> {
     }
 }
 
-fn split_first(s: &str, sep: char) -> (&str, Option<&str>) {
-    s.find(sep)
-        .map_or((s, None), |i| (&s[..i], Some(&s[i + sep.len_utf8()..])))
-}
-
 // --------------------------------------------------------------------------
 // Comparator construction helpers (internal)
 // --------------------------------------------------------------------------
 
-fn v(major: u64, minor: u64, patch: u64) -> Version {
+fn release_version(major: u64, minor: u64, patch: u64) -> Version {
     Version::new(major, minor, patch)
 }
 
-fn vp(major: u64, minor: u64, patch: u64, pre_release: PreRelease) -> Version {
+fn find_component_dots(
+    bytes: &[u8],
+    version_end: usize,
+    raw: &str,
+) -> Result<(Option<usize>, Option<usize>), SemverError> {
+    let mut first = None;
+    let mut second = None;
+    let mut pos = 0;
+    while pos < version_end {
+        if bytes[pos] == b'.' {
+            if first.is_none() {
+                first = Some(pos);
+            } else if second.is_none() {
+                second = Some(pos);
+            } else {
+                return Err(SemverError::new(format!(
+                    "too many version components: {raw}"
+                )));
+            }
+        }
+        pos += 1;
+    }
+    Ok((first, second))
+}
+
+fn prerelease_version(major: u64, minor: u64, patch: u64, pre_release: PreRelease) -> Version {
     Version {
         major,
         minor,
@@ -288,39 +341,39 @@ fn vp(major: u64, minor: u64, patch: u64, pre_release: PreRelease) -> Version {
     }
 }
 
-const fn c_gte(ver: Version) -> Comparator {
+const fn comparator_gte(ver: Version) -> Comparator {
     Comparator {
         op: Operator::GreaterThanOrEqual,
         version: ver,
     }
 }
-const fn c_gt(ver: Version) -> Comparator {
+const fn comparator_gt(ver: Version) -> Comparator {
     Comparator {
         op: Operator::GreaterThan,
         version: ver,
     }
 }
-const fn c_lte(ver: Version) -> Comparator {
+const fn comparator_lte(ver: Version) -> Comparator {
     Comparator {
         op: Operator::LessThanOrEqual,
         version: ver,
     }
 }
-const fn c_lt(ver: Version) -> Comparator {
+const fn comparator_lt(ver: Version) -> Comparator {
     Comparator {
         op: Operator::LessThan,
         version: ver,
     }
 }
-const fn c_eq(ver: Version) -> Comparator {
+const fn comparator_eq(ver: Version) -> Comparator {
     Comparator {
         op: Operator::Equal,
         version: ver,
     }
 }
 
-fn c_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
-    c_lt(vp(major, minor, patch, PreRelease::zero()))
+fn comparator_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
+    comparator_lt(prerelease_version(major, minor, patch, PreRelease::zero()))
 }
 
 // --------------------------------------------------------------------------
@@ -331,17 +384,26 @@ fn c_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
 fn expand_tilde(p: Partial) -> Vec<Comparator> {
     match (p.major, p.minor, p.patch) {
         (None, _, _) => vec![],
-        (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0)), c_lt_upper_bound(maj + 1, 0, 0)],
+        (Some(maj), None, _) => vec![
+            comparator_gte(release_version(maj, 0, 0)),
+            comparator_lt_upper_bound(maj + 1, 0, 0),
+        ],
         (Some(maj), Some(mnr), None) => {
-            vec![c_gte(v(maj, mnr, 0)), c_lt_upper_bound(maj, mnr + 1, 0)]
+            vec![
+                comparator_gte(release_version(maj, mnr, 0)),
+                comparator_lt_upper_bound(maj, mnr + 1, 0),
+            ]
         }
         (Some(maj), Some(mnr), Some(patch)) => {
             let floor = if p.pre_release.is_empty() {
-                v(maj, mnr, patch)
+                release_version(maj, mnr, patch)
             } else {
-                vp(maj, mnr, patch, p.pre_release)
+                prerelease_version(maj, mnr, patch, p.pre_release)
             };
-            vec![c_gte(floor), c_lt_upper_bound(maj, mnr + 1, 0)]
+            vec![
+                comparator_gte(floor),
+                comparator_lt_upper_bound(maj, mnr + 1, 0),
+            ]
         }
     }
 }
@@ -350,28 +412,49 @@ fn expand_tilde(p: Partial) -> Vec<Comparator> {
 fn expand_caret(p: Partial) -> Vec<Comparator> {
     match (p.major, p.minor, p.patch) {
         (None, _, _) => vec![],
-        (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0)), c_lt_upper_bound(maj + 1, 0, 0)],
+        (Some(maj), None, _) => vec![
+            comparator_gte(release_version(maj, 0, 0)),
+            comparator_lt_upper_bound(maj + 1, 0, 0),
+        ],
         (Some(maj), Some(mnr), None) => {
             if maj > 0 {
-                vec![c_gte(v(maj, mnr, 0)), c_lt_upper_bound(maj + 1, 0, 0)]
+                vec![
+                    comparator_gte(release_version(maj, mnr, 0)),
+                    comparator_lt_upper_bound(maj + 1, 0, 0),
+                ]
             } else if mnr > 0 {
-                vec![c_gte(v(0, mnr, 0)), c_lt_upper_bound(0, mnr + 1, 0)]
+                vec![
+                    comparator_gte(release_version(0, mnr, 0)),
+                    comparator_lt_upper_bound(0, mnr + 1, 0),
+                ]
             } else {
-                vec![c_gte(v(0, 0, 0)), c_lt_upper_bound(0, 1, 0)]
+                vec![
+                    comparator_gte(release_version(0, 0, 0)),
+                    comparator_lt_upper_bound(0, 1, 0),
+                ]
             }
         }
         (Some(maj), Some(mnr), Some(patch)) => {
             let floor = if p.pre_release.is_empty() {
-                v(maj, mnr, patch)
+                release_version(maj, mnr, patch)
             } else {
-                vp(maj, mnr, patch, p.pre_release)
+                prerelease_version(maj, mnr, patch, p.pre_release)
             };
             if maj > 0 {
-                vec![c_gte(floor), c_lt_upper_bound(maj + 1, 0, 0)]
+                vec![
+                    comparator_gte(floor),
+                    comparator_lt_upper_bound(maj + 1, 0, 0),
+                ]
             } else if mnr > 0 {
-                vec![c_gte(floor), c_lt_upper_bound(0, mnr + 1, 0)]
+                vec![
+                    comparator_gte(floor),
+                    comparator_lt_upper_bound(0, mnr + 1, 0),
+                ]
             } else {
-                vec![c_gte(floor), c_lt_upper_bound(0, 0, patch + 1)]
+                vec![
+                    comparator_gte(floor),
+                    comparator_lt_upper_bound(0, 0, patch + 1),
+                ]
             }
         }
     }
@@ -383,69 +466,79 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
         // No operator or `=` → exact or x-range
         None | Some(Operator::Equal) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![],
-            (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0)), c_lt_upper_bound(maj + 1, 0, 0)],
+            (Some(maj), None, _) => vec![
+                comparator_gte(release_version(maj, 0, 0)),
+                comparator_lt_upper_bound(maj + 1, 0, 0),
+            ],
             (Some(maj), Some(mnr), None) => {
-                vec![c_gte(v(maj, mnr, 0)), c_lt_upper_bound(maj, mnr + 1, 0)]
+                vec![
+                    comparator_gte(release_version(maj, mnr, 0)),
+                    comparator_lt_upper_bound(maj, mnr + 1, 0),
+                ]
             }
             (Some(maj), Some(mnr), Some(patch)) => {
                 let ver = if p.pre_release.is_empty() {
-                    v(maj, mnr, patch)
+                    release_version(maj, mnr, patch)
                 } else {
-                    vp(maj, mnr, patch, p.pre_release)
+                    prerelease_version(maj, mnr, patch, p.pre_release)
                 };
-                vec![c_eq(ver)]
+                vec![comparator_eq(ver)]
             }
         },
         Some(Operator::GreaterThan) => match (p.major, p.minor, p.patch) {
-            (None, _, _) => vec![c_lt(v(0, 0, 0))], // >* = impossible
-            (Some(maj), None, _) => vec![c_gte(v(maj + 1, 0, 0))],
-            (Some(maj), Some(mnr), None) => vec![c_gte(v(maj, mnr + 1, 0))],
+            (None, _, _) => vec![comparator_lt(release_version(0, 0, 0))], // >* = impossible
+            (Some(maj), None, _) => vec![comparator_gte(release_version(maj + 1, 0, 0))],
+            (Some(maj), Some(mnr), None) => {
+                vec![comparator_gte(release_version(maj, mnr + 1, 0))]
+            }
             (Some(maj), Some(mnr), Some(patch)) => {
                 let ver = if p.pre_release.is_empty() {
-                    v(maj, mnr, patch)
+                    release_version(maj, mnr, patch)
                 } else {
-                    vp(maj, mnr, patch, p.pre_release)
+                    prerelease_version(maj, mnr, patch, p.pre_release)
                 };
-                vec![c_gt(ver)]
+                vec![comparator_gt(ver)]
             }
         },
         Some(Operator::GreaterThanOrEqual) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![],
-            (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0))],
-            (Some(maj), Some(mnr), None) => vec![c_gte(v(maj, mnr, 0))],
+            (Some(maj), None, _) => vec![comparator_gte(release_version(maj, 0, 0))],
+            (Some(maj), Some(mnr), None) => {
+                vec![comparator_gte(release_version(maj, mnr, 0))]
+            }
             (Some(maj), Some(mnr), Some(patch)) => {
                 let ver = if p.pre_release.is_empty() {
-                    v(maj, mnr, patch)
+                    release_version(maj, mnr, patch)
                 } else {
-                    vp(maj, mnr, patch, p.pre_release)
+                    prerelease_version(maj, mnr, patch, p.pre_release)
                 };
-                vec![c_gte(ver)]
+                vec![comparator_gte(ver)]
             }
         },
         Some(Operator::LessThan) => match (p.major, p.minor, p.patch) {
-            (None, _, _) => vec![c_lt(v(0, 0, 0))], // <* = impossible
-            (Some(maj), None, _) => vec![c_lt(v(maj, 0, 0))],
-            (Some(maj), Some(mnr), None) => vec![c_lt(v(maj, mnr, 0))],
+            (None, _, _) => vec![comparator_lt(release_version(0, 0, 0))], // <* = impossible
+            (Some(maj), None, _) => vec![comparator_lt(release_version(maj, 0, 0))],
+            (Some(maj), Some(mnr), None) => vec![comparator_lt(release_version(maj, mnr, 0))],
             (Some(maj), Some(mnr), Some(patch)) => {
                 let ver = if p.pre_release.is_empty() {
-                    v(maj, mnr, patch)
+                    release_version(maj, mnr, patch)
                 } else {
-                    vp(maj, mnr, patch, p.pre_release)
+                    prerelease_version(maj, mnr, patch, p.pre_release)
                 };
-                vec![c_lt(ver)]
+                vec![comparator_lt(ver)]
             }
         },
         Some(Operator::LessThanOrEqual) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![],
-            (Some(maj), None, _) => vec![c_lt_upper_bound(maj + 1, 0, 0)],
-            (Some(maj), Some(mnr), None) => vec![c_lt_upper_bound(maj, mnr + 1, 0)],
+            (Some(maj), None, _) => vec![comparator_lt_upper_bound(maj + 1, 0, 0)],
+            (Some(maj), Some(mnr), None) => vec![comparator_lt_upper_bound(maj, mnr + 1, 0)],
             (Some(maj), Some(mnr), Some(patch)) => {
                 let ver = if p.pre_release.is_empty() {
-                    v(maj, mnr, patch)
+                    release_version(maj, mnr, patch)
                 } else {
-                    vp(maj, mnr, patch, p.pre_release)
+                    prerelease_version(maj, mnr, patch, p.pre_release)
                 };
-                vec![c_lte(ver)]
+                vec![comparator_lte(ver)]
             }
         },
     }
@@ -453,18 +546,18 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
 
 /// Expand a hyphen range `a - b` to comparators.
 fn expand_hyphen(a: Partial, b: Partial) -> Vec<Comparator> {
-    let lower = c_gte(a.floor());
+    let lower = comparator_gte(a.floor());
     let upper = match (b.major, b.minor, b.patch) {
         (None, _, _) => None,
-        (Some(maj), None, _) => Some(c_lt_upper_bound(maj + 1, 0, 0)),
-        (Some(maj), Some(mnr), None) => Some(c_lt_upper_bound(maj, mnr + 1, 0)),
+        (Some(maj), None, _) => Some(comparator_lt_upper_bound(maj + 1, 0, 0)),
+        (Some(maj), Some(mnr), None) => Some(comparator_lt_upper_bound(maj, mnr + 1, 0)),
         (Some(maj), Some(mnr), Some(patch)) => {
             let ver = if b.pre_release.is_empty() {
-                v(maj, mnr, patch)
+                release_version(maj, mnr, patch)
             } else {
-                vp(maj, mnr, patch, b.pre_release)
+                prerelease_version(maj, mnr, patch, b.pre_release)
             };
-            Some(c_lte(ver))
+            Some(comparator_lte(ver))
         }
     };
     let mut out = vec![lower];
@@ -486,7 +579,7 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
 
     // Split by `||` inline, avoiding a Vec<&str> allocation.
     let bytes = s.as_bytes();
-    let mut set = vec![];
+    let mut set = Vec::with_capacity(count_or_groups(bytes));
     let mut start = 0;
     let mut i = 0;
     while i < bytes.len() {
@@ -515,17 +608,15 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
         return Ok(ComparatorSet { comparators: comps });
     }
 
-    // Split by whitespace, then merge operator-only tokens with the following
-    // version token so that e.g. `^ 1.0.0` is treated as `^1.0.0`.
-    let mut iter = s.split_whitespace().peekable();
     let mut all = vec![];
-    while let Some(t) = iter.next() {
+    let bytes = s.as_bytes();
+    let mut pos = 0;
+    while let Some(t) = next_whitespace_token(s, bytes, &mut pos) {
         let is_op_only = matches!(t, ">" | ">=" | "<" | "<=" | "=" | "^" | "~" | "~=");
         if is_op_only {
-            if let Some(&next) = iter.peek() {
-                iter.next();
+            if let Some(next) = next_whitespace_token(s, bytes, &mut pos) {
                 // Concatenate op + version on the stack to avoid a heap allocation.
-                // Operators are ≤2 bytes; the whole range is ≤MAX_LENGTH bytes.
+                // Operators are <=2 bytes; the whole range is <=MAX_LENGTH bytes.
                 let mut buf = [0u8; 258];
                 let op = t.as_bytes();
                 let ver = next.as_bytes();
@@ -544,6 +635,61 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
         }
     }
     Ok(ComparatorSet { comparators: all })
+}
+
+fn next_whitespace_token<'a>(s: &'a str, bytes: &[u8], pos: &mut usize) -> Option<&'a str> {
+    while *pos < bytes.len() && bytes[*pos].is_ascii_whitespace() {
+        *pos += 1;
+    }
+    if *pos >= bytes.len() {
+        return None;
+    }
+    let start = *pos;
+    while *pos < bytes.len() && !bytes[*pos].is_ascii_whitespace() {
+        *pos += 1;
+    }
+    Some(&s[start..*pos])
+}
+
+fn count_or_groups(bytes: &[u8]) -> usize {
+    let mut count = 1;
+    let mut pos = 0;
+    while pos + 1 < bytes.len() {
+        if bytes[pos] == b'|' && bytes[pos + 1] == b'|' {
+            count += 1;
+            pos += 2;
+        } else {
+            pos += 1;
+        }
+    }
+    count
+}
+
+fn compare_core_and_prerelease(left: &Version, right: &Version) -> core::cmp::Ordering {
+    match left.major.cmp(&right.major) {
+        core::cmp::Ordering::Equal => {}
+        ordering @ (core::cmp::Ordering::Less | core::cmp::Ordering::Greater) => {
+            return ordering;
+        }
+    }
+    match left.minor.cmp(&right.minor) {
+        core::cmp::Ordering::Equal => {}
+        ordering @ (core::cmp::Ordering::Less | core::cmp::Ordering::Greater) => {
+            return ordering;
+        }
+    }
+    match left.patch.cmp(&right.patch) {
+        core::cmp::Ordering::Equal => {}
+        ordering @ (core::cmp::Ordering::Less | core::cmp::Ordering::Greater) => {
+            return ordering;
+        }
+    }
+    match (left.pre_release.is_empty(), right.pre_release.is_empty()) {
+        (true, false) => core::cmp::Ordering::Greater,
+        (false, true) => core::cmp::Ordering::Less,
+        (true, true) => core::cmp::Ordering::Equal,
+        (false, false) => left.pre_release.cmp_identifiers(&right.pre_release),
+    }
 }
 
 /// Return `Some(comparators)` if `s` is a hyphen range `X - Y`, else `None`.
