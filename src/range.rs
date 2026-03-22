@@ -596,6 +596,17 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
     }
     set.push(parse_comparator_set(s[start..].trim())?);
 
+    if set
+        .iter()
+        .any(|comparator_set| comparator_set.comparators.is_empty())
+    {
+        return Ok(Range {
+            set: vec![ComparatorSet {
+                comparators: vec![],
+            }],
+        });
+    }
+
     Ok(Range { set })
 }
 
@@ -1316,10 +1327,7 @@ mod tests {
     #[test]
     fn range_display_and_dedup_paths() {
         assert_eq!(Range::parse("*").unwrap().to_string(), "*");
-        assert_eq!(
-            Range::parse("* || ^1.2.3").unwrap().to_string(),
-            "*||>=1.2.3 <2.0.0-0"
-        );
+        assert_eq!(Range::parse("* || ^1.2.3").unwrap().to_string(), "*");
         assert_eq!(
             Range::parse(">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0")
                 .unwrap()
