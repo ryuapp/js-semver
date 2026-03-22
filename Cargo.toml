@@ -1,6 +1,6 @@
 [package]
 name = "js-semver"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Parser and evaluator for semantic versioning in JavaScript, including Node.js and Deno"
