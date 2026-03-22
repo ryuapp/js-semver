@@ -899,7 +899,6 @@ mod tests {
 
     #[test]
     fn operator_display() {
-        use crate::Operator;
         assert_eq!(Operator::Lt.to_string(), "<");
         assert_eq!(Operator::Lte.to_string(), "<=");
         assert_eq!(Operator::Gt.to_string(), ">");
