@@ -507,15 +507,31 @@ fn parse_nr_at(b: &[u8], pos: &mut usize, ctx: &str) -> Result<u64, SemverError>
     while *pos < b.len() && b[*pos].is_ascii_digit() {
         *pos += 1;
     }
-    let n = ctx[start..*pos]
-        .parse::<u64>()
-        .map_err(|_| SemverError::new(format!("number exceeds u64 range: {ctx}")))?;
+    let digits = &b[start..*pos];
+    if digits.len() > 16 {
+        return Err(SemverError::new(format!(
+            "number exceeds MAX_SAFE_INTEGER: {}",
+            &ctx[start..*pos]
+        )));
+    }
+    let n = parse_core_number_digits(digits, ctx)?;
     if n > MAX_SAFE_INTEGER {
         return Err(SemverError::new(format!(
             "number exceeds MAX_SAFE_INTEGER: {n}"
         )));
     }
     Ok(n)
+}
+
+fn parse_core_number_digits(digits: &[u8], ctx: &str) -> Result<u64, SemverError> {
+    let mut value = 0u64;
+    for &digit in digits {
+        if !digit.is_ascii_digit() {
+            return Err(SemverError::new(format!("not a number: {ctx}")));
+        }
+        value = value * 10 + u64::from(digit - b'0');
+    }
+    Ok(value)
 }
 
 pub(crate) fn parse_nr(s: &str) -> Result<u64, SemverError> {
@@ -548,30 +564,51 @@ pub(crate) fn parse_nr(s: &str) -> Result<u64, SemverError> {
 }
 
 pub(crate) fn parse_pre_release(s: &str) -> Result<PreRelease, SemverError> {
-    s.split('.')
-        .map(parse_pre_id)
-        .collect::<Result<Vec<_>, _>>()
-        .map(|ids| PreRelease(ids.into_boxed_slice()))
+    if s.is_empty() {
+        return Err(SemverError::new("empty pre-release"));
+    }
+    let bytes = s.as_bytes();
+    let mut ids = Vec::with_capacity(dot_separated_segments(bytes));
+    let mut start = 0;
+    let mut pos = 0;
+    while pos <= bytes.len() {
+        if pos == bytes.len() || bytes[pos] == b'.' {
+            ids.push(parse_pre_id(&s[start..pos])?);
+            start = pos + 1;
+        }
+        pos += 1;
+    }
+    Ok(PreRelease(ids.into_boxed_slice()))
 }
 
 fn parse_build_metadata(s: &str) -> Result<BuildMetadata, SemverError> {
     if s.is_empty() {
         return Err(SemverError::new("empty build metadata"));
     }
-    s.split('.')
-        .map(|id| {
+    let bytes = s.as_bytes();
+    let mut parts = Vec::with_capacity(dot_separated_segments(bytes));
+    let mut start = 0;
+    let mut pos = 0;
+    while pos <= bytes.len() {
+        if pos == bytes.len() || bytes[pos] == b'.' {
+            let id = &s[start..pos];
             if id.is_empty() {
                 return Err(SemverError::new("empty build metadata identifier"));
             }
-            if !id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-') {
+            if !id
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            {
                 return Err(SemverError::new(format!(
                     "invalid build metadata identifier: {id}"
                 )));
             }
-            Ok(Box::<str>::from(id))
-        })
-        .collect::<Result<Vec<_>, _>>()
-        .map(|parts| BuildMetadata(parts.into_boxed_slice()))
+            parts.push(Box::<str>::from(id));
+            start = pos + 1;
+        }
+        pos += 1;
+    }
+    Ok(BuildMetadata(parts.into_boxed_slice()))
 }
 
 fn parse_pre_id(part: &str) -> Result<PreReleaseIdentifier, SemverError> {
@@ -601,6 +638,18 @@ fn parse_pre_id(part: &str) -> Result<PreReleaseIdentifier, SemverError> {
     } else {
         Ok(PreReleaseIdentifier::AlphaNumeric(Box::from(part)))
     }
+}
+
+fn dot_separated_segments(bytes: &[u8]) -> usize {
+    let mut count = 0;
+    let mut pos = 0;
+    while pos < bytes.len() {
+        if bytes[pos] == b'.' {
+            count += 1;
+        }
+        pos += 1;
+    }
+    count
 }
 
 fn cmp_numeric_strings(left: &str, right: &str) -> Ordering {
