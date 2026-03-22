@@ -181,7 +181,7 @@ impl fmt::Display for Range {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, cs) in self.set.iter().enumerate() {
             if i > 0 {
-                f.write_str(" || ")?;
+                f.write_str("||")?;
             }
             if cs.comparators.is_empty() {
                 f.write_str("*")?;
@@ -384,7 +384,7 @@ fn comparator_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
 fn expand_tilde(p: Partial) -> Vec<Comparator> {
     match (p.major, p.minor, p.patch) {
         (None, _, _) => vec![],
-        (Some(0), None, Some(_)) => vec![comparator_lt_upper_bound(1, 0, 0)],
+        (Some(0), None, _) => vec![comparator_lt_upper_bound(1, 0, 0)],
         (Some(maj), None, _) => vec![
             comparator_gte(release_version(maj, 0, 0)),
             comparator_lt_upper_bound(maj + 1, 0, 0),
@@ -413,6 +413,7 @@ fn expand_tilde(p: Partial) -> Vec<Comparator> {
 fn expand_caret(p: Partial) -> Vec<Comparator> {
     match (p.major, p.minor, p.patch) {
         (None, _, _) => vec![],
+        (Some(0), None, _) => vec![comparator_lt_upper_bound(1, 0, 0)],
         (Some(maj), None, _) => vec![
             comparator_gte(release_version(maj, 0, 0)),
             comparator_lt_upper_bound(maj + 1, 0, 0),
@@ -467,6 +468,7 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
         // No operator or `=` → exact or x-range
         None | Some(Operator::Equal) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![],
+            (Some(0), None, _) => vec![comparator_lt_upper_bound(1, 0, 0)],
             (Some(maj), None, _) => vec![
                 comparator_gte(release_version(maj, 0, 0)),
                 comparator_lt_upper_bound(maj + 1, 0, 0),
@@ -502,7 +504,7 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
             }
         },
         Some(Operator::GreaterThanOrEqual) => match (p.major, p.minor, p.patch) {
-            (None, _, _) => vec![],
+            (None, _, _) | (Some(0), None, _) => vec![],
             (Some(maj), None, _) => vec![comparator_gte(release_version(maj, 0, 0))],
             (Some(maj), Some(mnr), None) => {
                 vec![comparator_gte(release_version(maj, mnr, 0))]
@@ -518,8 +520,8 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
         },
         Some(Operator::LessThan) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![comparator_lt(release_version(0, 0, 0))], // <* = impossible
-            (Some(maj), None, _) => vec![comparator_lt(release_version(maj, 0, 0))],
-            (Some(maj), Some(mnr), None) => vec![comparator_lt(release_version(maj, mnr, 0))],
+            (Some(maj), None, _) => vec![comparator_lt_upper_bound(maj, 0, 0)],
+            (Some(maj), Some(mnr), None) => vec![comparator_lt_upper_bound(maj, mnr, 0)],
             (Some(maj), Some(mnr), Some(patch)) => {
                 let ver = if p.pre_release.is_empty() {
                     release_version(maj, mnr, patch)
@@ -626,13 +628,19 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
                 buf[op.len()..len].copy_from_slice(ver);
                 let merged = core::str::from_utf8(&buf[..len])
                     .map_err(|_| SemverError::new("merged comparator string is not UTF-8"))?;
-                all.extend(parse_token(merged)?);
+                for comparator in parse_token(merged)? {
+                    push_canonical_comparator(&mut all, comparator);
+                }
             } else {
                 // operator with no following token → let parse_token produce the error
-                all.extend(parse_token(t)?);
+                for comparator in parse_token(t)? {
+                    push_canonical_comparator(&mut all, comparator);
+                }
             }
         } else {
-            all.extend(parse_token(t)?);
+            for comparator in parse_token(t)? {
+                push_canonical_comparator(&mut all, comparator);
+            }
         }
     }
     Ok(ComparatorSet { comparators: all })
@@ -791,6 +799,40 @@ fn parse_token(s: &str) -> Result<Vec<Comparator>, SemverError> {
     }
 
     Ok(expand_primitive(None, parse_partial(s)?))
+}
+
+fn push_canonical_comparator(all: &mut Vec<Comparator>, new: Comparator) {
+    for existing in &mut *all {
+        match (existing.op, new.op) {
+            (
+                Operator::LessThan | Operator::LessThanOrEqual,
+                Operator::LessThan | Operator::LessThanOrEqual,
+            ) => {
+                if existing.version.major == new.version.major
+                    && existing.version.minor == new.version.minor
+                    && existing.version.patch == new.version.patch
+                {
+                    let ordering = compare_core_and_prerelease(&existing.version, &new.version);
+                    if ordering == core::cmp::Ordering::Greater
+                        || (ordering == core::cmp::Ordering::Equal
+                            && existing.op == Operator::LessThanOrEqual
+                            && new.op == Operator::LessThan)
+                    {
+                        *existing = new;
+                    }
+                    return;
+                }
+            }
+            (Operator::Equal, Operator::Equal)
+                if compare_core_and_prerelease(&existing.version, &new.version)
+                    == core::cmp::Ordering::Equal =>
+            {
+                return;
+            }
+            _ => {}
+        }
+    }
+    all.push(new);
 }
 
 // --------------------------------------------------------------------------
@@ -1276,13 +1318,13 @@ mod tests {
         assert_eq!(Range::parse("*").unwrap().to_string(), "*");
         assert_eq!(
             Range::parse("* || ^1.2.3").unwrap().to_string(),
-            "* || >=1.2.3 <2.0.0-0"
+            "*||>=1.2.3 <2.0.0-0"
         );
         assert_eq!(
             Range::parse(">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0")
                 .unwrap()
                 .to_string(),
-            ">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0"
+            ">=1.0.0 <2.0.0||>=2.0.0 <3.0.0"
         );
     }
 
