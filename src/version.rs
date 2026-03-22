@@ -13,14 +13,14 @@ use crate::{MAX_LENGTH, MAX_SAFE_INTEGER, SemverError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum PreReleaseIdentifier {
-    Numeric(u64),
+    Numeric(Box<str>),
     AlphaNumeric(Box<str>),
 }
 
 impl fmt::Display for PreReleaseIdentifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Numeric(n) => write!(f, "{n}"),
+            Self::Numeric(n) => f.write_str(n),
             Self::AlphaNumeric(s) => f.write_str(s),
         }
     }
@@ -35,7 +35,7 @@ impl PartialOrd for PreReleaseIdentifier {
 impl Ord for PreReleaseIdentifier {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (Self::Numeric(a), Self::Numeric(b)) => a.cmp(b),
+            (Self::Numeric(a), Self::Numeric(b)) => cmp_numeric_strings(a, b),
             (Self::Numeric(_), Self::AlphaNumeric(_)) => Ordering::Less,
             (Self::AlphaNumeric(_), Self::Numeric(_)) => Ordering::Greater,
             (Self::AlphaNumeric(a), Self::AlphaNumeric(b)) => a.cmp(b),
@@ -49,7 +49,7 @@ pub struct PreRelease(Box<[PreReleaseIdentifier]>);
 
 impl PreRelease {
     pub(crate) fn zero() -> Self {
-        Self(Box::from([PreReleaseIdentifier::Numeric(0)]))
+        Self(Box::from([PreReleaseIdentifier::Numeric(Box::from("0"))]))
     }
 
     /// Parse a pre-release identifier list such as `alpha.1`.
@@ -88,7 +88,7 @@ impl PreRelease {
 
     pub(crate) fn push_numeric_zero(&mut self) {
         let mut ids = core::mem::take(&mut self.0).into_vec();
-        ids.push(PreReleaseIdentifier::Numeric(0));
+        ids.push(PreReleaseIdentifier::Numeric(Box::from("0")));
         self.0 = ids.into_boxed_slice();
     }
 
@@ -96,14 +96,17 @@ impl PreRelease {
         let mut ids = self.0.to_vec();
         let mut bumped = false;
         for pre_id in ids.iter_mut().rev() {
-            if let PreReleaseIdentifier::Numeric(n) = pre_id {
-                *n += 1;
-                bumped = true;
-                break;
+            match pre_id {
+                PreReleaseIdentifier::Numeric(n) => {
+                    *n = increment_decimal_string(n).into_boxed_str();
+                    bumped = true;
+                    break;
+                }
+                PreReleaseIdentifier::AlphaNumeric(_) => {}
             }
         }
         if !bumped {
-            ids.push(PreReleaseIdentifier::Numeric(0));
+            ids.push(PreReleaseIdentifier::Numeric(Box::from("0")));
         }
         Self(ids.into_boxed_slice())
     }
@@ -575,12 +578,10 @@ fn parse_pre_id(part: &str) -> Result<PreReleaseIdentifier, SemverError> {
     if b.is_empty() {
         return Err(SemverError::new("empty pre-release identifier"));
     }
-    // Single pass: simultaneously validate chars, determine if all-digits, accumulate n
-    let mut n: u64 = 0;
+    // Single pass: validate chars and determine whether the identifier is fully numeric.
     let mut all_digits = true;
     for &byte in b {
         if byte.is_ascii_digit() {
-            n = n.saturating_mul(10).saturating_add(u64::from(byte - b'0'));
         } else if byte.is_ascii_alphabetic() || byte == b'-' {
             all_digits = false;
         } else {
@@ -595,10 +596,33 @@ fn parse_pre_id(part: &str) -> Result<PreReleaseIdentifier, SemverError> {
                 "leading zero in pre-release: {part}"
             )));
         }
-        Ok(PreReleaseIdentifier::Numeric(n))
+        Ok(PreReleaseIdentifier::Numeric(Box::from(part)))
     } else {
         Ok(PreReleaseIdentifier::AlphaNumeric(Box::from(part)))
     }
+}
+
+fn cmp_numeric_strings(left: &str, right: &str) -> Ordering {
+    match left.len().cmp(&right.len()) {
+        Ordering::Equal => left.cmp(right),
+        ord @ (Ordering::Less | Ordering::Greater) => ord,
+    }
+}
+
+fn increment_decimal_string(value: &str) -> String {
+    let mut digits = value.as_bytes().to_vec();
+    for digit in digits.iter_mut().rev() {
+        if *digit == b'9' {
+            *digit = b'0';
+            continue;
+        }
+        *digit += 1;
+        return digits.into_iter().map(char::from).collect();
+    }
+    let mut result = String::with_capacity(digits.len() + 1);
+    result.push('1');
+    result.extend(digits.into_iter().map(char::from));
+    result
 }
 
 // --------------------------------------------------------------------------
@@ -1018,6 +1042,13 @@ mod tests {
         assert!("1.2.3-01".parse::<Version>().is_err());
         // pre-release numeric identifiers are not bounded by MAX_SAFE_INTEGER
         assert!("1.0.0-9007199254740992".parse::<Version>().is_ok());
+        assert_eq!(
+            "1.0.0-18446744073709551616"
+                .parse::<Version>()
+                .unwrap()
+                .to_string(),
+            "1.0.0-18446744073709551616"
+        );
         // empty string / whitespace only
         assert!("".parse::<Version>().is_err());
         assert!("   ".parse::<Version>().is_err());
@@ -1171,17 +1202,28 @@ mod tests {
     #[test]
     fn prerelease_identifier_ordering() {
         assert_eq!(
-            PreReleaseIdentifier::Numeric(1).cmp(&PreReleaseIdentifier::Numeric(2)),
+            PreReleaseIdentifier::Numeric(Box::from("1"))
+                .cmp(&PreReleaseIdentifier::Numeric(Box::from("2"))),
             Ordering::Less
         );
         assert_eq!(
-            PreReleaseIdentifier::Numeric(1)
+            PreReleaseIdentifier::Numeric(Box::from("18446744073709551615"))
+                .cmp(&PreReleaseIdentifier::Numeric(Box::from("18446744073709551616"))),
+            Ordering::Less
+        );
+        assert_eq!(
+            PreReleaseIdentifier::Numeric(Box::from("18446744073709551616"))
+                .cmp(&PreReleaseIdentifier::Numeric(Box::from("18446744073709551617"))),
+            Ordering::Less
+        );
+        assert_eq!(
+            PreReleaseIdentifier::Numeric(Box::from("1"))
                 .cmp(&PreReleaseIdentifier::AlphaNumeric(Box::from("alpha"))),
             Ordering::Less
         );
         assert_eq!(
             PreReleaseIdentifier::AlphaNumeric(Box::from("beta"))
-                .cmp(&PreReleaseIdentifier::Numeric(1)),
+                .cmp(&PreReleaseIdentifier::Numeric(Box::from("1"))),
             Ordering::Greater
         );
         assert_eq!(
@@ -1190,8 +1232,27 @@ mod tests {
             Ordering::Less
         );
         assert_eq!(
-            PreReleaseIdentifier::Numeric(1).partial_cmp(&PreReleaseIdentifier::Numeric(2)),
+            PreReleaseIdentifier::Numeric(Box::from("1"))
+                .partial_cmp(&PreReleaseIdentifier::Numeric(Box::from("2"))),
             Some(Ordering::Less)
+        );
+    }
+
+    #[test]
+    fn large_numeric_prerelease_increment_is_preserved() {
+        assert_eq!(
+            PreRelease::parse("18446744073709551616")
+                .unwrap()
+                .increment_last_numeric_or_append()
+                .to_string(),
+            "18446744073709551617"
+        );
+        assert_eq!(
+            PreRelease::parse(&u64::MAX.to_string())
+                .unwrap()
+                .increment_last_numeric_or_append()
+                .to_string(),
+            "18446744073709551616"
         );
     }
 
