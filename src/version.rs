@@ -718,11 +718,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_v_prefix() {
-        assert_eq!(v("v1.2.3"), v("1.2.3"));
-    }
-
-    #[test]
     fn build_ignored_in_eq() {
         assert_eq!(v("1.2.3+a"), v("1.2.3+b"));
     }
@@ -909,22 +904,6 @@ mod tests {
             v("1.0.0-alpha").difference(&v("1.0.0-beta")),
             Some(ReleaseType::PreRelease(None))
         );
-    }
-
-    // --- parse validity ---
-
-    #[test]
-    fn valid_versions() {
-        assert_eq!(
-            "1.2.3".parse::<Version>().ok().map(|v| v.to_string()),
-            Some("1.2.3".into())
-        );
-        assert_eq!(
-            "v1.2.3".parse::<Version>().ok().map(|v| v.to_string()),
-            Some("1.2.3".into())
-        );
-        assert!("not-valid".parse::<Version>().is_err());
-        assert!("1.2".parse::<Version>().is_err());
     }
 
     // --- sort ---

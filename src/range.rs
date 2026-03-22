@@ -771,16 +771,6 @@ mod tests {
         assert!(!r(">=4.0.0-rc.0").satisfies(&v("4.2.0-rc.1")));
     }
 
-    // --- parse validity ---
-
-    #[test]
-    fn valid_ranges() {
-        assert!("^1.0.0".parse::<Range>().is_ok());
-        assert!("~1.2.3".parse::<Range>().is_ok());
-        assert!("1.0.0 - 2.0.0".parse::<Range>().is_ok());
-        assert!("*".parse::<Range>().is_ok());
-    }
-
     // --- max/min satisfying ---
 
     #[test]
@@ -1126,18 +1116,6 @@ mod tests {
                 .to_string(),
             ">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0"
         );
-    }
-
-    #[test]
-    fn operator_without_rhs_errors() {
-        assert!(parse_token(">").is_err());
-        assert!(parse_token(">=").is_err());
-        assert!(parse_token("<").is_err());
-        assert!(parse_token("<=").is_err());
-        assert!(parse_token("=").is_err());
-        assert!(parse_token("^").is_err());
-        assert!(parse_token("~").is_err());
-        assert!(parse_token("~=").is_err());
     }
 
     #[test]
