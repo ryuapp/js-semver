@@ -504,11 +504,12 @@ fn parse_nr_at(b: &[u8], pos: &mut usize, ctx: &str) -> Result<u64, SemverError>
     if b[start] == b'0' && b.get(start + 1).is_some_and(u8::is_ascii_digit) {
         return Err(SemverError::new(format!("leading zero not allowed: {ctx}")));
     }
-    let mut n: u64 = 0;
     while *pos < b.len() && b[*pos].is_ascii_digit() {
-        n = n * 10 + u64::from(b[*pos] - b'0');
         *pos += 1;
     }
+    let n = ctx[start..*pos]
+        .parse::<u64>()
+        .map_err(|_| SemverError::new(format!("number exceeds u64 range: {ctx}")))?;
     if n > MAX_SAFE_INTEGER {
         return Err(SemverError::new(format!(
             "number exceeds MAX_SAFE_INTEGER: {n}"
@@ -1022,8 +1023,8 @@ mod tests {
         // leading zero
         assert!("01.2.3".parse::<Version>().is_err());
         assert!("1.02.3".parse::<Version>().is_err());
-        // MAX_SAFE_INTEGER exceeded
-        assert!("9007199254740992.0.0".parse::<Version>().is_err());
+        // core components that exceed u64 must return an error instead of panicking
+        assert!("18446744073709551616.0.0".parse::<Version>().is_err());
         // empty pre-release
         assert!("1.2.3-".parse::<Version>().is_err());
         // empty build metadata
@@ -1267,5 +1268,15 @@ mod tests {
         assert!(parse_nr("1a").is_err());
         assert!(parse_nr("9007199254740992").is_err());
         assert!(parse_nr("12345678901234567").is_err());
+    }
+
+    #[test]
+    fn max_safe_integer_core_components() {
+        assert!("9007199254740991.0.0".parse::<Version>().is_ok());
+        assert!("9007199254740992.0.0".parse::<Version>().is_err());
+        assert!("1.9007199254740991.0".parse::<Version>().is_ok());
+        assert!("1.0.9007199254740991".parse::<Version>().is_ok());
+        assert!("1.9007199254740992.0".parse::<Version>().is_err());
+        assert!("1.0.9007199254740992".parse::<Version>().is_err());
     }
 }
