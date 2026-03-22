@@ -14,7 +14,9 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          rustflags: ""
       - uses: rust-lang/crates-io-auth-action@v1
         id: auth
 
