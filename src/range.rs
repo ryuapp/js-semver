@@ -384,6 +384,7 @@ fn comparator_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
 fn expand_tilde(p: Partial) -> Vec<Comparator> {
     match (p.major, p.minor, p.patch) {
         (None, _, _) => vec![],
+        (Some(0), None, Some(_)) => vec![comparator_lt_upper_bound(1, 0, 0)],
         (Some(maj), None, _) => vec![
             comparator_gte(release_version(maj, 0, 0)),
             comparator_lt_upper_bound(maj + 1, 0, 0),
@@ -993,6 +994,8 @@ mod tests {
         // ~1 → >=1.0.0 <2.0.0-0
         assert!(r("~1").satisfies(&v("1.9.9")));
         assert!(!r("~1").satisfies(&v("2.0.0")));
+        assert_eq!(Range::parse("~0.x.0").unwrap().to_string(), "<1.0.0-0");
+        assert_eq!(Range::parse("~1.x.0").unwrap().to_string(), ">=1.0.0 <2.0.0-0");
         // ~1.2 → >=1.2.0 <1.3.0-0
         assert!(r("~1.2").satisfies(&v("1.2.9")));
         assert!(!r("~1.2").satisfies(&v("1.3.0")));
