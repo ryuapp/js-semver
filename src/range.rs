@@ -58,7 +58,13 @@ impl Comparator {
 
 impl fmt::Display for Comparator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}", self.op, self.version)
+        match self.op {
+            Operator::Equal => write!(f, "{}", self.version),
+            Operator::LessThan
+            | Operator::LessThanOrEqual
+            | Operator::GreaterThan
+            | Operator::GreaterThanOrEqual => write!(f, "{}{}", self.op, self.version),
+        }
     }
 }
 
@@ -829,6 +835,8 @@ mod tests {
         // Display outputs canonical form (expanded comparators)
         let range = Range::parse("^1.0.0").unwrap();
         assert_eq!(range.to_string(), ">=1.0.0 <2.0.0-0");
+        assert_eq!(Range::parse("1.0.0").unwrap().to_string(), "1.0.0");
+        assert_eq!(Range::parse("=1.0.0").unwrap().to_string(), "1.0.0");
         assert!(Range::parse(">=1.0.0 <2.0.0").is_ok());
     }
 
@@ -1154,7 +1162,7 @@ mod tests {
     fn operator_and_hyphen_edge_paths() {
         assert_eq!(r("<=1.2.3").to_string(), "<=1.2.3");
         assert_eq!(r("<1.2.3").to_string(), "<1.2.3");
-        assert_eq!(r("=1.2.3").to_string(), "=1.2.3");
+        assert_eq!(r("=1.2.3").to_string(), "1.2.3");
         assert_eq!(r("x").to_string(), "*");
         assert_eq!(r("=x").to_string(), "*");
         assert!(try_hyphen("1.2.3").unwrap().is_none());
