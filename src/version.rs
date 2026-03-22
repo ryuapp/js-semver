@@ -1207,13 +1207,15 @@ mod tests {
             Ordering::Less
         );
         assert_eq!(
-            PreReleaseIdentifier::Numeric(Box::from("18446744073709551615"))
-                .cmp(&PreReleaseIdentifier::Numeric(Box::from("18446744073709551616"))),
+            PreReleaseIdentifier::Numeric(Box::from("18446744073709551615")).cmp(
+                &PreReleaseIdentifier::Numeric(Box::from("18446744073709551616"))
+            ),
             Ordering::Less
         );
         assert_eq!(
-            PreReleaseIdentifier::Numeric(Box::from("18446744073709551616"))
-                .cmp(&PreReleaseIdentifier::Numeric(Box::from("18446744073709551617"))),
+            PreReleaseIdentifier::Numeric(Box::from("18446744073709551616")).cmp(
+                &PreReleaseIdentifier::Numeric(Box::from("18446744073709551617"))
+            ),
             Ordering::Less
         );
         assert_eq!(
