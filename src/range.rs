@@ -15,25 +15,25 @@ use crate::{MAX_LENGTH, SemverError};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operator {
     /// `<` — less than
-    Lt,
+    LessThan,
     /// `<=` — less than or equal to
-    Lte,
+    LessThanOrEqual,
     /// `>` — greater than
-    Gt,
+    GreaterThan,
     /// `>=` — greater than or equal to
-    Gte,
+    GreaterThanOrEqual,
     /// `=` — exactly equal
-    Eq,
+    Equal,
 }
 
 impl fmt::Display for Operator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::Lt => "<",
-            Self::Lte => "<=",
-            Self::Gt => ">",
-            Self::Gte => ">=",
-            Self::Eq => "=",
+            Self::LessThan => "<",
+            Self::LessThanOrEqual => "<=",
+            Self::GreaterThan => ">",
+            Self::GreaterThanOrEqual => ">=",
+            Self::Equal => "=",
         })
     }
 }
@@ -47,11 +47,11 @@ struct Comparator {
 impl Comparator {
     fn test(&self, v: &Version) -> bool {
         match self.op {
-            Operator::Eq => v == &self.version,
-            Operator::Gt => v > &self.version,
-            Operator::Gte => v >= &self.version,
-            Operator::Lt => v < &self.version,
-            Operator::Lte => v <= &self.version,
+            Operator::Equal => v == &self.version,
+            Operator::GreaterThan => v > &self.version,
+            Operator::GreaterThanOrEqual => v >= &self.version,
+            Operator::LessThan => v < &self.version,
+            Operator::LessThanOrEqual => v <= &self.version,
         }
     }
 }
@@ -284,31 +284,31 @@ fn vp(major: u64, minor: u64, patch: u64, pre_release: PreRelease) -> Version {
 
 const fn c_gte(ver: Version) -> Comparator {
     Comparator {
-        op: Operator::Gte,
+        op: Operator::GreaterThanOrEqual,
         version: ver,
     }
 }
 const fn c_gt(ver: Version) -> Comparator {
     Comparator {
-        op: Operator::Gt,
+        op: Operator::GreaterThan,
         version: ver,
     }
 }
 const fn c_lte(ver: Version) -> Comparator {
     Comparator {
-        op: Operator::Lte,
+        op: Operator::LessThanOrEqual,
         version: ver,
     }
 }
 const fn c_lt(ver: Version) -> Comparator {
     Comparator {
-        op: Operator::Lt,
+        op: Operator::LessThan,
         version: ver,
     }
 }
 const fn c_eq(ver: Version) -> Comparator {
     Comparator {
-        op: Operator::Eq,
+        op: Operator::Equal,
         version: ver,
     }
 }
@@ -369,7 +369,7 @@ fn expand_caret(p: Partial) -> Vec<Comparator> {
 fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
     match op {
         // No operator or `=` → exact or x-range
-        None | Some(Operator::Eq) => match (p.major, p.minor, p.patch) {
+        None | Some(Operator::Equal) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![],
             (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0)), c_lt(v(maj + 1, 0, 0))],
             (Some(maj), Some(mnr), None) => vec![c_gte(v(maj, mnr, 0)), c_lt(v(maj, mnr + 1, 0))],
@@ -382,7 +382,7 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
                 vec![c_eq(ver)]
             }
         },
-        Some(Operator::Gt) => match (p.major, p.minor, p.patch) {
+        Some(Operator::GreaterThan) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![c_lt(v(0, 0, 0))], // >* = impossible
             (Some(maj), None, _) => vec![c_gte(v(maj + 1, 0, 0))],
             (Some(maj), Some(mnr), None) => vec![c_gte(v(maj, mnr + 1, 0))],
@@ -395,7 +395,7 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
                 vec![c_gt(ver)]
             }
         },
-        Some(Operator::Gte) => match (p.major, p.minor, p.patch) {
+        Some(Operator::GreaterThanOrEqual) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![],
             (Some(maj), None, _) => vec![c_gte(v(maj, 0, 0))],
             (Some(maj), Some(mnr), None) => vec![c_gte(v(maj, mnr, 0))],
@@ -408,7 +408,7 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
                 vec![c_gte(ver)]
             }
         },
-        Some(Operator::Lt) => match (p.major, p.minor, p.patch) {
+        Some(Operator::LessThan) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![c_lt(v(0, 0, 0))], // <* = impossible
             (Some(maj), None, _) => vec![c_lt(v(maj, 0, 0))],
             (Some(maj), Some(mnr), None) => vec![c_lt(v(maj, mnr, 0))],
@@ -421,7 +421,7 @@ fn expand_primitive(op: Option<Operator>, p: Partial) -> Vec<Comparator> {
                 vec![c_lt(ver)]
             }
         },
-        Some(Operator::Lte) => match (p.major, p.minor, p.patch) {
+        Some(Operator::LessThanOrEqual) => match (p.major, p.minor, p.patch) {
             (None, _, _) => vec![],
             (Some(maj), None, _) => vec![c_lt(v(maj + 1, 0, 0))],
             (Some(maj), Some(mnr), None) => vec![c_lt(v(maj, mnr + 1, 0))],
@@ -583,35 +583,50 @@ fn parse_token(s: &str) -> Result<Vec<Comparator>, SemverError> {
         if rest.is_empty() {
             return Err(SemverError::new("missing version after >="));
         }
-        return Ok(expand_primitive(Some(Operator::Gte), parse_partial(rest)?));
+        return Ok(expand_primitive(
+            Some(Operator::GreaterThanOrEqual),
+            parse_partial(rest)?,
+        ));
     }
     if let Some(rest) = s.strip_prefix("<=") {
         let rest = rest.trim();
         if rest.is_empty() {
             return Err(SemverError::new("missing version after <="));
         }
-        return Ok(expand_primitive(Some(Operator::Lte), parse_partial(rest)?));
+        return Ok(expand_primitive(
+            Some(Operator::LessThanOrEqual),
+            parse_partial(rest)?,
+        ));
     }
     if let Some(rest) = s.strip_prefix('>') {
         let rest = rest.trim();
         if rest.is_empty() {
             return Err(SemverError::new("missing version after >"));
         }
-        return Ok(expand_primitive(Some(Operator::Gt), parse_partial(rest)?));
+        return Ok(expand_primitive(
+            Some(Operator::GreaterThan),
+            parse_partial(rest)?,
+        ));
     }
     if let Some(rest) = s.strip_prefix('<') {
         let rest = rest.trim();
         if rest.is_empty() {
             return Err(SemverError::new("missing version after <"));
         }
-        return Ok(expand_primitive(Some(Operator::Lt), parse_partial(rest)?));
+        return Ok(expand_primitive(
+            Some(Operator::LessThan),
+            parse_partial(rest)?,
+        ));
     }
     if let Some(rest) = s.strip_prefix('=') {
         let rest = rest.trim();
         if rest.is_empty() {
             return Err(SemverError::new("missing version after ="));
         }
-        return Ok(expand_primitive(Some(Operator::Eq), parse_partial(rest)?));
+        return Ok(expand_primitive(
+            Some(Operator::Equal),
+            parse_partial(rest)?,
+        ));
     }
 
     Ok(expand_primitive(None, parse_partial(s)?))
@@ -655,8 +670,8 @@ fn cs_intersect(cs1: &ComparatorSet, cs2: &ComparatorSet) -> bool {
 
 fn lower_bound_candidate(c: &Comparator) -> Option<Version> {
     match c.op {
-        Operator::Eq | Operator::Gte => Some(c.version.clone()),
-        Operator::Gt => {
+        Operator::Equal | Operator::GreaterThanOrEqual => Some(c.version.clone()),
+        Operator::GreaterThan => {
             let mut ver = c.version.clone();
             ver.build = BuildMetadata::default();
             if ver.pre_release.is_empty() {
@@ -666,7 +681,7 @@ fn lower_bound_candidate(c: &Comparator) -> Option<Version> {
             }
             Some(ver)
         }
-        Operator::Lt | Operator::Lte => None,
+        Operator::LessThan | Operator::LessThanOrEqual => None,
     }
 }
 
@@ -900,11 +915,11 @@ mod tests {
 
     #[test]
     fn operator_display() {
-        assert_eq!(Operator::Lt.to_string(), "<");
-        assert_eq!(Operator::Lte.to_string(), "<=");
-        assert_eq!(Operator::Gt.to_string(), ">");
-        assert_eq!(Operator::Gte.to_string(), ">=");
-        assert_eq!(Operator::Eq.to_string(), "=");
+        assert_eq!(Operator::LessThan.to_string(), "<");
+        assert_eq!(Operator::LessThanOrEqual.to_string(), "<=");
+        assert_eq!(Operator::GreaterThan.to_string(), ">");
+        assert_eq!(Operator::GreaterThanOrEqual.to_string(), ">=");
+        assert_eq!(Operator::Equal.to_string(), "=");
     }
 
     // --- min_version: 0.0.0-0 path ---
