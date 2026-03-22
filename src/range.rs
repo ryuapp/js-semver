@@ -518,7 +518,8 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
                 let len = op.len() + ver.len();
                 buf[..op.len()].copy_from_slice(op);
                 buf[op.len()..len].copy_from_slice(ver);
-                let merged = core::str::from_utf8(&buf[..len]).unwrap();
+                let merged = core::str::from_utf8(&buf[..len])
+                    .map_err(|_| SemverError::new("merged comparator string is not UTF-8"))?;
                 all.extend(parse_token(merged)?);
             } else {
                 // operator with no following token → let parse_token produce the error
