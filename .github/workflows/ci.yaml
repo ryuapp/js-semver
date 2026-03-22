@@ -38,6 +38,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v6
@@ -50,6 +51,7 @@ jobs:
           files: lcov.info
           fail_ci_if_error: true
           use_oidc: true
+          verbose: true
 
   msrv:
     runs-on: ubuntu-latest
