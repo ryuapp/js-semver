@@ -392,9 +392,6 @@ impl fmt::Display for Version {
         if !self.pre_release.is_empty() {
             write!(f, "-{}", self.pre_release)?;
         }
-        if !self.build.is_empty() {
-            write!(f, "+{}", self.build)?;
-        }
         Ok(())
     }
 }
@@ -790,12 +787,12 @@ mod tests {
         let cases = [
             ("1.2.3", "1.2.3"),
             ("1.2.3-alpha.1", "1.2.3-alpha.1"),
-            ("1.2.3+build.42", "1.2.3+build.42"),
-            ("1.2.3-alpha.1+build", "1.2.3-alpha.1+build"),
+            ("1.2.3+build.42", "1.2.3"),
+            ("1.2.3-alpha.1+build", "1.2.3-alpha.1"),
             ("v1.2.3", "1.2.3"),
             ("v 1.2.3", "1.2.3"),
             ("1.2.3--pre", "1.2.3--pre"),
-            ("1.2.3-a+b", "1.2.3-a+b"),
+            ("1.2.3-a+b", "1.2.3-a"),
             ("0.0.0", "0.0.0"),
             ("9007199254740991.0.0", "9007199254740991.0.0"),
             ("1.2.3-9007199254740992", "1.2.3-9007199254740992"),
@@ -1083,7 +1080,7 @@ mod tests {
             "1.2.3-.0".into(),
             "1.2.3-a!b".into(),
             "1.2.3-01".into(),
-            "".into(),
+            String::new(),
             "   ".into(),
             "1.".into(),
             "1.2.".into(),
