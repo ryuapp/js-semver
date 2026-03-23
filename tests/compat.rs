@@ -11,15 +11,6 @@ fn r(s: &str) -> Range {
 }
 
 #[test]
-fn std_semver_compat_parse() {
-    assert!("v1.2.3".parse::<Version>().is_ok());
-    assert!("01.2.3".parse::<Version>().is_err());
-    // partial versions are rejected
-    assert!("1.2".parse::<Version>().is_err());
-    assert!("1".parse::<Version>().is_err());
-}
-
-#[test]
 fn std_semver_compat_satisfies() {
     assert!(r(">=1.0.0").satisfies(&v("1.5.0")));
     assert!(r("^1.2.3").satisfies(&v("1.2.4")));
@@ -146,49 +137,6 @@ fn std_semver_compat_difference() {
     );
 }
 
-// --- invalid version strings ---
-
-#[test]
-fn std_semver_compat_version_invalid() {
-    // empty / whitespace
-    assert!("".parse::<Version>().is_err());
-    assert!("   ".parse::<Version>().is_err());
-    // partial (no minor/patch)
-    assert!("1".parse::<Version>().is_err());
-    assert!("1.2".parse::<Version>().is_err());
-    assert!("1.".parse::<Version>().is_err());
-    assert!("1.2.".parse::<Version>().is_err());
-    // double dot / too many components
-    assert!("1..2.3".parse::<Version>().is_err());
-    assert!("1.2.3.4".parse::<Version>().is_err());
-    // leading zero
-    assert!("01.2.3".parse::<Version>().is_err());
-    assert!("1.02.3".parse::<Version>().is_err());
-    assert!("1.2.03".parse::<Version>().is_err());
-    // leading zero in pre-release
-    assert!("1.2.3-01".parse::<Version>().is_err());
-    assert!("1.2.3-0.01".parse::<Version>().is_err());
-    // exceeds MAX_SAFE_INTEGER in major/minor/patch
-    assert!("9007199254740992.0.0".parse::<Version>().is_err());
-    assert!("1.9007199254740992.0".parse::<Version>().is_err());
-    assert!("1.0.9007199254740992".parse::<Version>().is_err());
-    // pre-release numeric identifiers are not bounded by MAX_SAFE_INTEGER
-    assert!("1.2.3-9007199254740992".parse::<Version>().is_ok());
-    // empty pre-release / build
-    assert!("1.2.3-".parse::<Version>().is_err());
-    assert!("1.2.3+".parse::<Version>().is_err());
-    // double dot in pre-release / build
-    assert!("1.2.3-a..b".parse::<Version>().is_err());
-    assert!("1.2.3+a..b".parse::<Version>().is_err());
-    // invalid chars
-    assert!("1.2.3-!".parse::<Version>().is_err());
-    assert!("1.2.3+!".parse::<Version>().is_err());
-    assert!("a.b.c".parse::<Version>().is_err());
-    // starts with dot / dash
-    assert!("-1.2.3".parse::<Version>().is_err());
-    assert!(".1.2.3".parse::<Version>().is_err());
-}
-
 // --- invalid range strings ---
 
 #[test]
@@ -224,21 +172,6 @@ fn std_semver_compat_range_invalid() {
 }
 
 // --- valid strings that must be accepted ---
-
-#[test]
-fn std_semver_compat_version_valid() {
-    // v prefix and whitespace tolerance
-    assert!("v1.2.3".parse::<Version>().is_ok());
-    assert!("V1.2.3".parse::<Version>().is_err()); // npm/semver: uppercase V rejected
-    // double-dash pre-release (valid per semver spec)
-    assert!("1.2.3--pre".parse::<Version>().is_ok());
-    // pre-release with build metadata
-    assert!("1.2.3-a+b".parse::<Version>().is_ok());
-    // 0.0.0 is valid
-    assert!("0.0.0".parse::<Version>().is_ok());
-    // MAX_SAFE_INTEGER itself is valid
-    assert!("9007199254740991.0.0".parse::<Version>().is_ok());
-}
 
 #[test]
 fn std_semver_compat_range_valid() {

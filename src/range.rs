@@ -962,55 +962,45 @@ mod tests {
     // --- satisfies ---
 
     #[test]
-    fn satisfies_caret() {
-        assert!(r("^1.0.0").satisfies(&v("1.2.3")));
-        assert!(r("^1.0.0").satisfies(&v("1.9.9")));
-        assert!(!r("^1.0.0").satisfies(&v("2.0.0")));
-        assert!(!r("^1.0.0").satisfies(&v("0.9.9")));
-    }
+    fn satisfies_cases() {
+        let cases = [
+            ("^1.0.0", "1.2.3", true),
+            ("^1.0.0", "1.9.9", true),
+            ("^1.0.0", "2.0.0", false),
+            ("^1.0.0", "0.9.9", false),
+            ("~1.2.0", "1.2.3", true),
+            ("~1.2.0", "1.2.9", true),
+            ("~1.2.0", "1.3.0", false),
+            ("~1.2.0", "1.1.9", false),
+            ("1.0.0 - 2.0.0", "1.5.0", true),
+            ("1.0.0 - 2.0.0", "1.0.0", true),
+            ("1.0.0 - 2.0.0", "2.0.0", true),
+            ("1.0.0 - 2.0.0", "3.0.0", false),
+            (">1.0.0", "2.0.0", true),
+            (">=1.0.0", "1.0.0", true),
+            ("<1.0.0", "0.9.9", true),
+            ("<=1.0.0", "1.0.0", true),
+            ("=1.0.0", "1.0.0", true),
+            ("1.0.0", "1.0.0", true),
+            ("1.x", "1.2.3", true),
+            ("1", "1.0.0", true),
+            ("1", "1.9.9", true),
+            ("1", "2.0.0", false),
+            ("1.2.x", "1.2.9", true),
+            ("*", "1.2.3", true),
+            ("*", "0.0.1", true),
+            ("1.0.0 || 2.0.0", "1.0.0", true),
+            ("1.0.0 || 2.0.0", "2.0.0", true),
+            ("1.0.0 || 2.0.0", "3.0.0", false),
+        ];
 
-    #[test]
-    fn satisfies_tilde() {
-        assert!(r("~1.2.0").satisfies(&v("1.2.3")));
-        assert!(r("~1.2.0").satisfies(&v("1.2.9")));
-        assert!(!r("~1.2.0").satisfies(&v("1.3.0")));
-        assert!(!r("~1.2.0").satisfies(&v("1.1.9")));
-    }
-
-    #[test]
-    fn satisfies_hyphen() {
-        assert!(r("1.0.0 - 2.0.0").satisfies(&v("1.5.0")));
-        assert!(r("1.0.0 - 2.0.0").satisfies(&v("1.0.0")));
-        assert!(r("1.0.0 - 2.0.0").satisfies(&v("2.0.0")));
-        assert!(!r("1.0.0 - 2.0.0").satisfies(&v("3.0.0")));
-    }
-
-    #[test]
-    fn satisfies_primitive() {
-        assert!(r(">1.0.0").satisfies(&v("2.0.0")));
-        assert!(r(">=1.0.0").satisfies(&v("1.0.0")));
-        assert!(r("<1.0.0").satisfies(&v("0.9.9")));
-        assert!(r("<=1.0.0").satisfies(&v("1.0.0")));
-        assert!(r("=1.0.0").satisfies(&v("1.0.0")));
-        assert!(r("1.0.0").satisfies(&v("1.0.0")));
-    }
-
-    #[test]
-    fn satisfies_xrange() {
-        assert!(r("1.x").satisfies(&v("1.2.3")));
-        assert!(r("1").satisfies(&v("1.0.0")));
-        assert!(r("1").satisfies(&v("1.9.9")));
-        assert!(!r("1").satisfies(&v("2.0.0")));
-        assert!(r("1.2.x").satisfies(&v("1.2.9")));
-        assert!(r("*").satisfies(&v("1.2.3")));
-        assert!(r("*").satisfies(&v("0.0.1")));
-    }
-
-    #[test]
-    fn satisfies_or() {
-        assert!(r("1.0.0 || 2.0.0").satisfies(&v("1.0.0")));
-        assert!(r("1.0.0 || 2.0.0").satisfies(&v("2.0.0")));
-        assert!(!r("1.0.0 || 2.0.0").satisfies(&v("3.0.0")));
+        for (range, version, expected) in cases {
+            assert_eq!(
+                r(range).satisfies(&v(version)),
+                expected,
+                "{range} :: {version}"
+            );
+        }
     }
 
     #[test]
@@ -1069,16 +1059,47 @@ mod tests {
         assert!(r(">=1.0.0").intersects(&r("<=2.0.0")));
     }
 
-    // --- Range::parse static method + Display ---
-
     #[test]
-    fn parse_static_and_display() {
-        // Display outputs canonical form (expanded comparators)
-        let range = Range::parse("^1.0.0").unwrap();
-        assert_eq!(range.to_string(), ">=1.0.0 <2.0.0-0");
-        assert_eq!(Range::parse("1.0.0").unwrap().to_string(), "1.0.0");
-        assert_eq!(Range::parse("=1.0.0").unwrap().to_string(), "1.0.0");
+    fn parse_valid_and_display_cases() {
+        let cases = [
+            ("^1.0.0", ">=1.0.0 <2.0.0-0"),
+            ("1.0.0", "1.0.0"),
+            ("=1.0.0", "1.0.0"),
+            ("~0.x.0", "<1.0.0-0"),
+            ("~1.x.0", ">=1.0.0 <2.0.0-0"),
+            ("*", "*"),
+            ("* || ^1.2.3", "*"),
+            (">X", "<0.0.0-0"),
+            ("<X", "<0.0.0-0"),
+            ("<x <* || >* 2.x", "<0.0.0-0"),
+            (
+                ">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0",
+                ">=1.0.0 <2.0.0||>=2.0.0 <3.0.0",
+            ),
+            ("~> 1", ">=1.0.0 <2.0.0-0"),
+            ("~ 1.0", ">=1.0.0 <1.1.0-0"),
+            ("~v0.5.2-pre", ">=0.5.2-pre <0.6.0-0"),
+            ("^ 1.2.3", ">=1.2.3 <2.0.0-0"),
+            ("<=1.2.3", "<=1.2.3"),
+            ("<1.2.3", "<1.2.3"),
+            ("x", "*"),
+            ("=x", "*"),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                Range::parse(input).unwrap().to_string(),
+                expected,
+                "{input}"
+            );
+        }
+
         assert!(Range::parse(">=1.0.0 <2.0.0").is_ok());
+        assert!(try_hyphen(">=1.0.0 - 2.0.0").unwrap().is_none());
+        assert!(try_hyphen("1.0.0 - <=2.0.0").unwrap().is_none());
+        assert!(try_hyphen("1.2.3").unwrap().is_none());
+        assert!(try_hyphen("1.2.3 -").unwrap().is_none());
+        assert!(try_hyphen("- 1.2.3").unwrap().is_none());
     }
 
     // --- partial range syntax (tilde/caret with missing parts) ---
@@ -1286,125 +1307,67 @@ mod tests {
         assert!(!r(">=1.0.0 *").satisfies(&v("0.9.9")));
     }
 
-    // --- range parse errors ---
-
     #[test]
-    fn range_parse_errors() {
-        // leading zero in partial version
-        assert!(Range::parse("01.0.0").is_err());
-        // non-numeric in version part
-        assert!(Range::parse("1a.0.0").is_err());
-        // major exceeds MAX_SAFE_INTEGER
-        assert!(Range::parse("9007199254740992.0.0").is_err());
-        // operator with no version
-        assert!(Range::parse(">").is_err());
-        assert!(Range::parse(">=").is_err());
-        assert!(Range::parse("> ").is_err());
-        assert!(Range::parse("<").is_err());
-        assert!(Range::parse("<=").is_err());
-        assert!(Range::parse("=").is_err());
-        // caret / tilde with no version
-        assert!(Range::parse("^").is_err());
-        assert!(Range::parse("~").is_err());
-        assert!(Range::parse("~=").is_err());
-        // incomplete hyphen range
-        assert!(Range::parse("1.0.0 -").is_err());
-        assert!(Range::parse("- 2.0.0").is_err());
-        assert!(Range::parse("1.0.0 - 2.0.0 - 3.0.0").is_err());
-        // consecutive / mixed operators
-        assert!(Range::parse(">>1.0.0").is_err());
-        assert!(Range::parse("><1.0.0").is_err());
-        assert!(Range::parse(">=<=1.0.0").is_err());
-        // leading zero in operator range
-        assert!(Range::parse("^01.0.0").is_err());
-        assert!(Range::parse("~01.0.0").is_err());
-        assert!(Range::parse(">01.0.0").is_err());
-        assert!(Range::parse(">=01.0.0").is_err());
-        // invalid version inside range
-        assert!(Range::parse("^1.2.3.4").is_err());
-        assert!(Range::parse(">=a.b.c").is_err());
-        assert!(Range::parse(">1.2.3-0.01").is_err());
-        // garbage
-        assert!(Range::parse("!!").is_err());
-        assert!(Range::parse("??").is_err());
-        assert!(Range::parse("1.0.0!").is_err());
-        // trailing / leading hyphen (not a hyphen range)
-        assert!(Range::parse("1.0.0-").is_err());
-        assert!(Range::parse("-1.0.0").is_err());
-        // version after operator with invalid pre-release leading zero
-        assert!(Range::parse("^1.0.0-0.01").is_err());
-        assert!(Range::parse(">=1.0.0-01").is_err());
-        assert!(Range::parse("~1.0.0-01").is_err());
-        // too many version components inside range
-        assert!(Range::parse("^1.2.3.4").is_err());
-        // operator appended after version (not a valid comparator)
-        assert!(Range::parse("1.0.0>").is_err());
-        assert!(Range::parse("1.0.0>=").is_err());
-        assert!(Range::parse("1.0.0^").is_err());
-        // trailing dot in partial (missing component after dot)
-        assert!(Range::parse("~1.").is_err());
-        assert!(Range::parse("^1.").is_err());
-        assert!(Range::parse("^1.2.").is_err());
-        assert!(Range::parse("~1.2.").is_err());
-        assert!(Range::parse(">=1.").is_err());
-        assert!(Range::parse(">=1.2.").is_err());
-        // trailing dot in hyphen range operands
-        assert!(Range::parse("1. - 2.0.0").is_err());
-        assert!(Range::parse("1.0.0 - 2.").is_err());
-        // hyphen range with space between version and hyphen
-        assert!(Range::parse("1.0.0- 2.0.0").is_err());
-        assert!(Range::parse("1.0.0 -2.0.0").is_err());
-        // bang / not-equal (not supported)
-        assert!(Range::parse("!1.0.0").is_err());
-        assert!(Range::parse("!=1.0.0").is_err());
-        // control character in range
-        assert!(Range::parse(">1.0.0\x00").is_err());
-        // leading zero in various operators
-        assert!(Range::parse("^00.0.0").is_err());
-        assert!(Range::parse("~0.00.0").is_err());
-        assert!(Range::parse(">=0.0.00").is_err());
-        // upper-bound expansion must reject u64 overflow
-        assert!(Range::parse("^9007199254740991.0.0").is_err());
-    }
+    fn parse_invalid_cases() {
+        let cases = [
+            "01.0.0",
+            "1a.0.0",
+            "9007199254740992.0.0",
+            ">",
+            ">=",
+            "> ",
+            "<",
+            "<=",
+            "=",
+            "^",
+            "~",
+            "~=",
+            "1.0.0 -",
+            "- 2.0.0",
+            "1.0.0 - 2.0.0 - 3.0.0",
+            ">>1.0.0",
+            "><1.0.0",
+            ">=<=1.0.0",
+            "^01.0.0",
+            "~01.0.0",
+            ">01.0.0",
+            ">=01.0.0",
+            "^1.2.3.4",
+            ">=a.b.c",
+            ">1.2.3-0.01",
+            "!!",
+            "??",
+            "1.0.0!",
+            "1.0.0-",
+            "-1.0.0",
+            "^1.0.0-0.01",
+            ">=1.0.0-01",
+            "~1.0.0-01",
+            "1.0.0>",
+            "1.0.0>=",
+            "1.0.0^",
+            "~1.",
+            "^1.",
+            "^1.2.",
+            "~1.2.",
+            ">=1.",
+            ">=1.2.",
+            "1. - 2.0.0",
+            "1.0.0 - 2.",
+            "1.0.0- 2.0.0",
+            "1.0.0 -2.0.0",
+            "!1.0.0",
+            "!=1.0.0",
+            ">1.0.0\x00",
+            "^00.0.0",
+            "~0.00.0",
+            ">=0.0.00",
+            "^9007199254740991.0.0",
+        ];
 
-    #[test]
-    fn range_display_and_dedup_paths() {
-        assert_eq!(Range::parse("*").unwrap().to_string(), "*");
-        assert_eq!(Range::parse("* || ^1.2.3").unwrap().to_string(), "*");
-        assert_eq!(Range::parse(">X").unwrap().to_string(), "<0.0.0-0");
-        assert_eq!(Range::parse("<X").unwrap().to_string(), "<0.0.0-0");
-        assert_eq!(
-            Range::parse("<x <* || >* 2.x").unwrap().to_string(),
-            "<0.0.0-0"
-        );
-        assert_eq!(
-            Range::parse(">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0")
-                .unwrap()
-                .to_string(),
-            ">=1.0.0 <2.0.0||>=2.0.0 <3.0.0"
-        );
-    }
-
-    #[test]
-    fn hyphen_range_not_used_with_operators() {
-        assert!(try_hyphen(">=1.0.0 - 2.0.0").unwrap().is_none());
-        assert!(try_hyphen("1.0.0 - <=2.0.0").unwrap().is_none());
-        assert_eq!(
-            Range::parse("~> 1").unwrap().to_string(),
-            ">=1.0.0 <2.0.0-0"
-        );
-        assert_eq!(
-            Range::parse("~ 1.0").unwrap().to_string(),
-            ">=1.0.0 <1.1.0-0"
-        );
-        assert_eq!(
-            Range::parse("~v0.5.2-pre").unwrap().to_string(),
-            ">=0.5.2-pre <0.6.0-0"
-        );
-        assert_eq!(
-            Range::parse("^ 1.2.3").unwrap().to_string(),
-            ">=1.2.3 <2.0.0-0"
-        );
+        for input in cases {
+            assert!(Range::parse(input).is_err(), "{input}");
+        }
     }
 
     #[test]
@@ -1419,18 +1382,6 @@ mod tests {
         assert!(Range::parse("=a.b.c").is_err());
         assert!(Range::parse("> a.b.c").is_err());
         assert!(Range::parse("^1.0.0 || >").is_err());
-    }
-
-    #[test]
-    fn operator_and_hyphen_edge_paths() {
-        assert_eq!(r("<=1.2.3").to_string(), "<=1.2.3");
-        assert_eq!(r("<1.2.3").to_string(), "<1.2.3");
-        assert_eq!(r("=1.2.3").to_string(), "1.2.3");
-        assert_eq!(r("x").to_string(), "*");
-        assert_eq!(r("=x").to_string(), "*");
-        assert!(try_hyphen("1.2.3").unwrap().is_none());
-        assert!(try_hyphen("1.2.3 -").unwrap().is_none());
-        assert!(try_hyphen("- 1.2.3").unwrap().is_none());
     }
 
     #[test]

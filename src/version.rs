@@ -772,33 +772,45 @@ mod tests {
     // --- Version parsing ---
 
     #[test]
-    fn parse_basic() {
-        let ver = v("1.2.3");
-        assert_eq!((ver.major, ver.minor, ver.patch), (1, 2, 3));
-        assert!(ver.pre_release.is_empty());
-        assert!(ver.build.is_empty());
-    }
+    fn parse_valid_and_display_cases() {
+        let basic = v("1.2.3");
+        assert_eq!((basic.major, basic.minor, basic.patch), (1, 2, 3));
+        assert!(basic.pre_release.is_empty());
+        assert!(basic.build.is_empty());
 
-    #[test]
-    fn parse_prerelease() {
-        let ver = v("1.2.3-alpha.1");
-        assert_eq!(ver.pre_release.to_string(), "alpha.1");
-    }
+        let with_pre = v("1.2.3-alpha.1");
+        assert_eq!(with_pre.pre_release.to_string(), "alpha.1");
 
-    #[test]
-    fn parse_build() {
-        let ver = v("1.2.3+build.42");
-        assert_eq!(ver.build.iter().collect::<Vec<_>>(), vec!["build", "42"]);
+        let with_build = v("1.2.3+build.42");
+        assert_eq!(
+            with_build.build.iter().collect::<Vec<_>>(),
+            vec!["build", "42"]
+        );
+
+        let cases = [
+            ("1.2.3", "1.2.3"),
+            ("1.2.3-alpha.1", "1.2.3-alpha.1"),
+            ("1.2.3+build.42", "1.2.3+build.42"),
+            ("1.2.3-alpha.1+build", "1.2.3-alpha.1+build"),
+            ("v1.2.3", "1.2.3"),
+            ("v 1.2.3", "1.2.3"),
+            ("1.2.3--pre", "1.2.3--pre"),
+            ("1.2.3-a+b", "1.2.3-a+b"),
+            ("0.0.0", "0.0.0"),
+            ("9007199254740991.0.0", "9007199254740991.0.0"),
+            ("1.2.3-9007199254740992", "1.2.3-9007199254740992"),
+            ("1.0.0-9007199254740992", "1.0.0-9007199254740992"),
+            ("1.0.0-18446744073709551616", "1.0.0-18446744073709551616"),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(input.parse::<Version>().unwrap().to_string(), expected);
+        }
     }
 
     #[test]
     fn build_ignored_in_eq() {
         assert_eq!(v("1.2.3+a"), v("1.2.3+b"));
-    }
-
-    #[test]
-    fn display() {
-        assert_eq!(v("1.2.3-alpha.1+build").to_string(), "1.2.3-alpha.1+build");
     }
 
     // --- Comparison ---
@@ -1013,12 +1025,6 @@ mod tests {
 
     // --- Version::parse static method ---
 
-    #[test]
-    fn parse_static_method() {
-        assert_eq!(Version::parse("1.2.3").unwrap(), v("1.2.3"));
-        assert!(Version::parse("bad").is_err());
-    }
-
     // --- Ord: release > pre-release ---
 
     #[test]
@@ -1062,111 +1068,73 @@ mod tests {
     // --- parse errors ---
 
     #[test]
-    fn parse_errors() {
-        // too long
-        assert!("1.2.3".repeat(60).parse::<Version>().is_err());
-        // v prefix with space
-        assert!("v 1.2.3".parse::<Version>().is_ok());
-        // missing minor
-        assert!("1".parse::<Version>().is_err());
-        // leading zero
-        assert!("01.2.3".parse::<Version>().is_err());
-        assert!("1.02.3".parse::<Version>().is_err());
-        // core components that exceed u64 must return an error instead of panicking
-        assert!("18446744073709551616.0.0".parse::<Version>().is_err());
-        // empty pre-release
-        assert!("1.2.3-".parse::<Version>().is_err());
-        // empty build metadata
-        assert!("1.2.3+".parse::<Version>().is_err());
-        // empty build metadata identifier
-        assert!("1.2.3+a..b".parse::<Version>().is_err());
-        // invalid build metadata identifier character
-        assert!("1.2.3+a!b".parse::<Version>().is_err());
-        // unexpected trailing character
-        assert!("1.2.3 extra".parse::<Version>().is_err());
-        // empty pre-release identifier
-        assert!("1.2.3-.0".parse::<Version>().is_err());
-        // invalid pre-release identifier character
-        assert!("1.2.3-a!b".parse::<Version>().is_err());
-        // leading zero in pre-release
-        assert!("1.2.3-01".parse::<Version>().is_err());
-        // pre-release numeric identifiers are not bounded by MAX_SAFE_INTEGER
-        assert!("1.0.0-9007199254740992".parse::<Version>().is_ok());
-        assert_eq!(
-            "1.0.0-18446744073709551616"
-                .parse::<Version>()
-                .unwrap()
-                .to_string(),
-            "1.0.0-18446744073709551616"
-        );
-        // empty string / whitespace only
-        assert!("".parse::<Version>().is_err());
-        assert!("   ".parse::<Version>().is_err());
-        // trailing dot (missing component)
-        assert!("1.".parse::<Version>().is_err());
-        assert!("1.2.".parse::<Version>().is_err());
-        // double dot
-        assert!("1..2.3".parse::<Version>().is_err());
-        // too many components
-        assert!("1.2.3.4".parse::<Version>().is_err());
-        // starts with dot or dash
-        assert!("..1".parse::<Version>().is_err());
-        assert!(".1.2".parse::<Version>().is_err());
-        assert!("-1.2.3".parse::<Version>().is_err());
-        // double dot in pre-release
-        assert!("1.2.3-pre..rel".parse::<Version>().is_err());
-        // trailing dot in pre-release
-        assert!("1.2.3-0.1.".parse::<Version>().is_err());
-        // leading zero in second pre-release identifier
-        assert!("1.2.3-0.01".parse::<Version>().is_err());
-        assert!("1.2.3-01.0".parse::<Version>().is_err());
-        // empty pre-release dot separator
-        assert!("1.2.3-.".parse::<Version>().is_err());
-        // double + in build
-        assert!("1.2.3++".parse::<Version>().is_err());
-        // leading dot in build
-        assert!("1.2.3+.".parse::<Version>().is_err());
-        // minor / patch exceeds MAX_SAFE_INTEGER
-        assert!("1.9007199254740992.0".parse::<Version>().is_err());
-        assert!("1.0.9007199254740992".parse::<Version>().is_err());
-        // leading zero in patch
-        assert!("1.2.03".parse::<Version>().is_err());
-        assert!("1.00.3".parse::<Version>().is_err());
-        // tab / slash / hash
-        assert!("1.2.3\t4".parse::<Version>().is_err());
-        assert!("1.2.3/".parse::<Version>().is_err());
-        assert!("1.2.3#1".parse::<Version>().is_err());
-        // all letters
-        assert!("a.b.c".parse::<Version>().is_err());
-        assert!("abc".parse::<Version>().is_err());
-        // plus sign prefix
-        assert!("+1.2.3".parse::<Version>().is_err());
-        assert!("1.+2.3".parse::<Version>().is_err());
-        assert!("1.2.+3".parse::<Version>().is_err());
-        // embedded spaces between components
-        assert!("1 .2.3".parse::<Version>().is_err());
-        assert!("1. 2.3".parse::<Version>().is_err());
-        assert!("1.2. 3".parse::<Version>().is_err());
-        // space between version and pre-release marker
-        assert!("1.2.3- alpha".parse::<Version>().is_err());
-        assert!("1.2.3 -alpha".parse::<Version>().is_err());
-        // multiple leading zeros
-        assert!("00.0.0".parse::<Version>().is_err());
-        assert!("0.00.0".parse::<Version>().is_err());
-        assert!("0.0.00".parse::<Version>().is_err());
-        // leading zero in pre-release multi-part
-        assert!("1.2.3-00".parse::<Version>().is_err());
-        assert!("1.2.3-0.00".parse::<Version>().is_err());
-        // build metadata with space or slash
-        assert!("1.2.3+a b".parse::<Version>().is_err());
-        assert!("1.2.3+a/b".parse::<Version>().is_err());
-        // build metadata trailing dot
-        assert!("1.2.3+a.b.".parse::<Version>().is_err());
-        // build metadata leading dot
-        assert!("1.2.3+.a.b".parse::<Version>().is_err());
-        // full-width (unicode) digits
-        assert!("１.0.0".parse::<Version>().is_err());
-        assert!("1.２.0".parse::<Version>().is_err());
+    fn parse_invalid_cases() {
+        let cases = [
+            "1.2.3".repeat(60),
+            "1".into(),
+            "01.2.3".into(),
+            "1.02.3".into(),
+            "18446744073709551616.0.0".into(),
+            "1.2.3-".into(),
+            "1.2.3+".into(),
+            "1.2.3+a..b".into(),
+            "1.2.3+a!b".into(),
+            "1.2.3 extra".into(),
+            "1.2.3-.0".into(),
+            "1.2.3-a!b".into(),
+            "1.2.3-01".into(),
+            "".into(),
+            "   ".into(),
+            "1.".into(),
+            "1.2.".into(),
+            "1..2.3".into(),
+            "1.2.3.4".into(),
+            "..1".into(),
+            ".1.2".into(),
+            "-1.2.3".into(),
+            "1.2.3-pre..rel".into(),
+            "1.2.3-0.1.".into(),
+            "1.2.3-0.01".into(),
+            "1.2.3-01.0".into(),
+            "1.2.3-.".into(),
+            "1.2.3++".into(),
+            "1.2.3+.".into(),
+            "1.9007199254740992.0".into(),
+            "1.0.9007199254740992".into(),
+            "1.2.03".into(),
+            "1.00.3".into(),
+            "1.2.3\t4".into(),
+            "1.2.3/".into(),
+            "1.2.3#1".into(),
+            "a.b.c".into(),
+            "abc".into(),
+            "+1.2.3".into(),
+            "1.+2.3".into(),
+            "1.2.+3".into(),
+            "1 .2.3".into(),
+            "1. 2.3".into(),
+            "1.2. 3".into(),
+            "1.2.3- alpha".into(),
+            "1.2.3 -alpha".into(),
+            "00.0.0".into(),
+            "0.00.0".into(),
+            "0.0.00".into(),
+            "1.2.3-00".into(),
+            "1.2.3-0.00".into(),
+            "1.2.3+a b".into(),
+            "1.2.3+a/b".into(),
+            "1.2.3+a.b.".into(),
+            "1.2.3+.a.b".into(),
+            "１.0.0".into(),
+            "1.２.0".into(),
+            "V1.2.3".into(),
+            "bad".into(),
+        ];
+
+        for input in cases {
+            assert!(input.parse::<Version>().is_err(), "{input}");
+            assert!(Version::parse(&input).is_err(), "{input}");
+        }
     }
 
     // --- coerce edge cases ---
