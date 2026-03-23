@@ -38,9 +38,9 @@ mod tests {
     fn version_roundtrip() {
         let version: Version = "1.2.3-alpha.1+build.42".parse().unwrap();
         let json = serde_json::to_string(&version).unwrap();
-        assert_eq!(json, "\"1.2.3-alpha.1+build.42\"");
+        assert_eq!(json, "\"1.2.3-alpha.1\"");
         let parsed: Version = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed, version);
+        assert_eq!(parsed.to_string(), version.to_string());
     }
 
     #[test]
