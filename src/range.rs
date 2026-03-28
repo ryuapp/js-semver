@@ -133,59 +133,6 @@ impl Range {
         }
         false
     }
-
-    /// Returns `true` if this range intersects with `other`.
-    #[must_use]
-    pub fn intersects(&self, other: &Self) -> bool {
-        range_intersects_impl(self, other)
-    }
-
-    /// Return the minimum version that satisfies this range, or `None`.
-    #[must_use]
-    pub fn min_version(&self) -> Option<Version> {
-        let mut candidates: Vec<Version> = vec![];
-        for comparator_set in &self.set {
-            let Some(candidate) = comparator_set_min_version(comparator_set) else {
-                continue;
-            };
-            candidates.push(candidate);
-        }
-        candidates.sort();
-        candidates.dedup();
-        candidates.into_iter().next()
-    }
-
-    /// Return the highest version in `versions` that satisfies this range, or `None`.
-    #[must_use]
-    pub fn max_satisfying<'a>(&self, versions: &'a [Version]) -> Option<&'a Version> {
-        let mut best = None;
-        for version in versions {
-            let is_better = match best {
-                Some(current) => version > current,
-                None => true,
-            };
-            if self.satisfies(version) && is_better {
-                best = Some(version);
-            }
-        }
-        best
-    }
-
-    /// Return the lowest version in `versions` that satisfies this range, or `None`.
-    #[must_use]
-    pub fn min_satisfying<'a>(&self, versions: &'a [Version]) -> Option<&'a Version> {
-        let mut best = None;
-        for version in versions {
-            let is_better = match best {
-                Some(current) => version < current,
-                None => true,
-            };
-            if self.satisfies(version) && is_better {
-                best = Some(version);
-            }
-        }
-        best
-    }
 }
 
 impl fmt::Display for Range {
@@ -881,86 +828,6 @@ fn is_impossible_comparator(comparator: &Comparator) -> bool {
 }
 
 // --------------------------------------------------------------------------
-// Range intersection helpers
-// --------------------------------------------------------------------------
-
-fn range_intersects_impl(r1: &Range, r2: &Range) -> bool {
-    r1.set
-        .iter()
-        .any(|cs1| r2.set.iter().any(|cs2| cs_intersect(cs1, cs2)))
-}
-
-fn cs_intersect(cs1: &ComparatorSet, cs2: &ComparatorSet) -> bool {
-    if cs1.comparators.is_empty() || cs2.comparators.is_empty() {
-        return true;
-    }
-    // Check lower-bound candidates from each set against the other.
-    for c in &cs1.comparators {
-        if let Some(cand) = lower_bound_candidate(c) {
-            if cs1.test(&cand) && cs2.test(&cand) {
-                return true;
-            }
-        }
-    }
-    for c in &cs2.comparators {
-        if let Some(cand) = lower_bound_candidate(c) {
-            if cs1.test(&cand) && cs2.test(&cand) {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-// --------------------------------------------------------------------------
-// Private helpers for Range methods
-// --------------------------------------------------------------------------
-
-fn lower_bound_candidate(c: &Comparator) -> Option<Version> {
-    match c.op {
-        Operator::Equal | Operator::GreaterThanOrEqual => Some(c.version.clone()),
-        Operator::GreaterThan => {
-            let mut ver = c.version.clone();
-            ver.build = BuildMetadata::default();
-            if ver.pre_release.is_empty() {
-                ver.patch += 1;
-            } else {
-                ver.pre_release.push_numeric_zero();
-            }
-            Some(ver)
-        }
-        Operator::LessThan | Operator::LessThanOrEqual => None,
-    }
-}
-
-fn comparator_set_min_version(comparator_set: &ComparatorSet) -> Option<Version> {
-    let v000 = Version::new(0, 0, 0);
-    if comparator_set.test(&v000) {
-        return Some(v000);
-    }
-    let v000_pre = prerelease_version(0, 0, 0, PreRelease::zero());
-    if comparator_set.test(&v000_pre) {
-        return Some(v000_pre);
-    }
-    let mut candidates: Vec<Version> = vec![];
-    for comparator in &comparator_set.comparators {
-        let Some(candidate) = lower_bound_candidate(comparator) else {
-            continue;
-        };
-        candidates.push(candidate);
-    }
-    candidates.sort();
-    candidates.dedup();
-    for candidate in candidates {
-        if !comparator_set.test(&candidate) {
-            continue;
-        }
-        return Some(candidate);
-    }
-    None
-}
-
-// --------------------------------------------------------------------------
 // Tests
 // --------------------------------------------------------------------------
 
@@ -1052,49 +919,6 @@ mod tests {
         assert!(r(">=4.0.0-rc.0").satisfies(&v("4.0.0-rc.2")));
         // 4.2.0-rc.1: different tuple (4.2.0 ≠ 4.0.0) → excluded
         assert!(!r(">=4.0.0-rc.0").satisfies(&v("4.2.0-rc.1")));
-    }
-
-    // --- max/min satisfying ---
-
-    #[test]
-    fn max_satisfying_basic() {
-        let mut vs: Vec<Version> = Vec::new();
-        for s in ["1.0.0", "1.2.0", "2.0.0", "3.0.0"] {
-            vs.push(s.parse().unwrap());
-        }
-        assert_eq!(r("^1.0.0").max_satisfying(&vs), Some(&v("1.2.0")));
-        assert_eq!(r("^3.0.0").max_satisfying(&vs), Some(&v("3.0.0")));
-        assert_eq!(r("^4.0.0").max_satisfying(&vs), None);
-    }
-
-    #[test]
-    fn min_satisfying_basic() {
-        let mut vs: Vec<Version> = Vec::new();
-        for s in ["1.0.0", "1.2.0", "2.0.0", "3.0.0"] {
-            vs.push(s.parse().unwrap());
-        }
-        assert_eq!(r("^1.0.0").min_satisfying(&vs), Some(&v("1.0.0")));
-        assert_eq!(r(">=2.0.0").min_satisfying(&vs), Some(&v("2.0.0")));
-    }
-
-    // --- min_version ---
-
-    #[test]
-    fn min_version_basic() {
-        assert_eq!(r(">=1.0.0").min_version(), Some(v("1.0.0")));
-        assert_eq!(r("^1.2.3").min_version(), Some(v("1.2.3")));
-        assert_eq!(r("~2.0.0").min_version(), Some(v("2.0.0")));
-        assert_eq!(r("*").min_version(), Some(v("0.0.0")));
-        assert_eq!(r("<2.0.0").min_version(), Some(v("0.0.0")));
-    }
-
-    // --- intersects ---
-
-    #[test]
-    fn intersects_ranges() {
-        assert!(r("^1.0.0").intersects(&r("^1.5.0")));
-        assert!(!r("^1.0.0").intersects(&r("^2.0.0")));
-        assert!(r(">=1.0.0").intersects(&r("<=2.0.0")));
     }
 
     #[test]
@@ -1194,25 +1018,6 @@ mod tests {
         assert!(!r("<=1.2").satisfies(&v("1.3.0")));
     }
 
-    // --- min_version with pre-release lower bound ---
-
-    #[test]
-    fn min_version_prerelease() {
-        assert_eq!(
-            r(">=1.0.0-alpha").min_version(),
-            Some("1.0.0-alpha".parse().unwrap())
-        );
-        // >* is impossible, returns None
-        assert_eq!(r(">*").min_version(), None);
-    }
-
-    // --- lower_bound_candidate with Gt + pre-release ---
-
-    #[test]
-    fn intersects_gt_pre() {
-        assert!(r(">1.0.0-alpha").intersects(&r("^1.0.0")));
-    }
-
     // --- Operator Display ---
 
     #[test]
@@ -1222,31 +1027,6 @@ mod tests {
         assert_eq!(Operator::GreaterThan.to_string(), ">");
         assert_eq!(Operator::GreaterThanOrEqual.to_string(), ">=");
         assert_eq!(Operator::Equal.to_string(), "=");
-    }
-
-    // --- min_version: 0.0.0-0 path ---
-
-    #[test]
-    fn min_version_v000_pre() {
-        // 0.0.0 fails (pre-release restriction), but 0.0.0-0 passes
-        assert_eq!(
-            r(">=0.0.0-0 <=0.0.0-beta").min_version(),
-            Some("0.0.0-0".parse().unwrap())
-        );
-    }
-
-    // --- min_version: Gt with non-pre patch+1 ---
-
-    #[test]
-    fn min_version_gt() {
-        assert_eq!(r(">1.0.0").min_version(), Some(v("1.0.1")));
-    }
-
-    // --- cs_intersect: wildcard range ---
-
-    #[test]
-    fn intersects_wildcard() {
-        assert!(r("*").intersects(&r("^1.0.0")));
     }
 
     // --- wildcard operator forms ---
@@ -1394,11 +1174,6 @@ mod tests {
     }
 
     #[test]
-    fn min_version_dedups_duplicate_candidates() {
-        assert_eq!(r(">=1.2.3 >=1.2.3").min_version(), Some(v("1.2.3")));
-    }
-
-    #[test]
     fn invalid_partial_after_operator_errors() {
         assert!(Range::parse("<=a.b.c").is_err());
         assert!(Range::parse("<a.b.c").is_err());
@@ -1423,12 +1198,6 @@ mod tests {
         assert_eq!(r("<=1.2.3 <1.2.3").to_string(), "<1.2.3");
         assert_eq!(r("<1.2.3 <=1.2.3").to_string(), "<1.2.3");
         assert_eq!(r("1.2.3 1.2.3").to_string(), "1.2.3");
-    }
-
-    #[test]
-    fn comparator_set_min_version_none_for_unsatisfiable_bounds() {
-        let comparator_set = parse_comparator_set(">1.0.0 <1.0.1").unwrap();
-        assert_eq!(comparator_set_min_version(&comparator_set), None);
     }
 
     #[test]

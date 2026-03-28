@@ -85,31 +85,6 @@ impl PreRelease {
         }
         self.0.len().cmp(&other.0.len())
     }
-
-    pub(crate) fn push_numeric_zero(&mut self) {
-        let mut ids = core::mem::take(&mut self.0).into_vec();
-        ids.push(PreReleaseIdentifier::Numeric(Box::from("0")));
-        self.0 = ids.into_boxed_slice();
-    }
-
-    pub(crate) fn increment_last_numeric_or_append(&self) -> Self {
-        let mut ids = self.0.to_vec();
-        let mut bumped = false;
-        for pre_id in ids.iter_mut().rev() {
-            match pre_id {
-                PreReleaseIdentifier::Numeric(n) => {
-                    *n = increment_decimal_string(n).into_boxed_str();
-                    bumped = true;
-                    break;
-                }
-                PreReleaseIdentifier::AlphaNumeric(_) => {}
-            }
-        }
-        if !bumped {
-            ids.push(PreReleaseIdentifier::Numeric(Box::from("0")));
-        }
-        Self(ids.into_boxed_slice())
-    }
 }
 
 impl fmt::Display for PreRelease {
@@ -252,128 +227,7 @@ impl Version {
         parse_version(s)
     }
 
-    /// Returns `true` if this version has pre-release identifiers.
-    #[must_use]
-    pub fn is_prerelease(&self) -> bool {
-        !self.pre_release.is_empty()
-    }
-
-    /// Increment this version by the given release type.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SemverError`] if `release` contains invalid pre-release
-    /// identifiers.
-    pub fn increment(&self, release: ReleaseType) -> Result<Self, SemverError> {
-        increment_version(self, release)
-    }
-
-    /// Try to coerce a string to a valid semver version.
-    ///
-    /// Finds the first `major[.minor[.patch]]` pattern and fills in missing
-    /// parts with `0`.
-    #[must_use]
-    pub fn coerce(s: &str) -> Option<Self> {
-        let s = s.trim();
-        if s.len() > MAX_LENGTH {
-            return None;
-        }
-        let s = s
-            .strip_prefix('v')
-            .or_else(|| s.strip_prefix('V'))
-            .unwrap_or(s)
-            .trim_start();
-        let bytes = s.as_bytes();
-        let mut i = 0;
-        while i < bytes.len() {
-            if !bytes[i].is_ascii_digit() {
-                i += 1;
-                continue;
-            }
-            let start = i;
-            while i < bytes.len() && bytes[i].is_ascii_digit() {
-                i += 1;
-            }
-            let major: u64 = s[start..i].parse().ok()?;
-            if major > MAX_SAFE_INTEGER {
-                i += 1;
-                continue;
-            }
-            let minor: u64 = if i < bytes.len() && bytes[i] == b'.' {
-                i += 1;
-                let ms = i;
-                while i < bytes.len() && bytes[i].is_ascii_digit() {
-                    i += 1;
-                }
-                if i > ms {
-                    s[ms..i].parse().unwrap_or(0)
-                } else {
-                    i = ms - 1;
-                    0
-                }
-            } else {
-                0
-            };
-            let patch: u64 = if i < bytes.len() && bytes[i] == b'.' {
-                i += 1;
-                let ps = i;
-                while i < bytes.len() && bytes[i].is_ascii_digit() {
-                    i += 1;
-                }
-                if i > ps {
-                    s[ps..i].parse().unwrap_or(0)
-                } else {
-                    0
-                }
-            } else {
-                0
-            };
-            return Some(Self::new(major, minor, patch));
-        }
-        None
-    }
-
-    /// Return the release type that changed between `self` and `other`,
-    /// or `None` if they are equal.
-    #[must_use]
-    pub fn difference(&self, other: &Self) -> Option<ReleaseType> {
-        let precedence = self.cmp_precedence(other);
-        if precedence == Ordering::Equal {
-            return None;
-        }
-        let high = if precedence == Ordering::Greater {
-            self
-        } else {
-            other
-        };
-        let rt = if self.major != other.major {
-            if high.pre_release.is_empty() {
-                ReleaseType::Major
-            } else {
-                ReleaseType::PreMajor(None)
-            }
-        } else if self.minor != other.minor {
-            if high.pre_release.is_empty() {
-                ReleaseType::Minor
-            } else {
-                ReleaseType::PreMinor(None)
-            }
-        } else if self.patch != other.patch {
-            if high.pre_release.is_empty() {
-                ReleaseType::Patch
-            } else {
-                ReleaseType::PrePatch(None)
-            }
-        } else {
-            ReleaseType::PreRelease(None)
-        };
-        Some(rt)
-    }
-
     /// Compare semantic version precedence, ignoring build metadata.
-    ///
-    /// This matches the `SemVer` precedence rules and the behavior of
-    /// `semver::Version::cmp_precedence`.
     ///
     /// # Examples
     ///
@@ -433,29 +287,6 @@ impl FromStr for Version {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         parse_version(s)
     }
-}
-
-// --------------------------------------------------------------------------
-// ReleaseType
-// --------------------------------------------------------------------------
-
-/// The type of increment to apply to a version.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ReleaseType {
-    /// Increment the major version.
-    Major,
-    /// Increment the minor version.
-    Minor,
-    /// Increment the patch version.
-    Patch,
-    /// Increment to the next pre-major version, optionally using a custom identifier prefix.
-    PreMajor(Option<String>),
-    /// Increment to the next pre-minor version, optionally using a custom identifier prefix.
-    PreMinor(Option<String>),
-    /// Increment to the next pre-patch version, optionally using a custom identifier prefix.
-    PrePatch(Option<String>),
-    /// Increment the pre-release identifiers, optionally using a custom identifier prefix.
-    PreRelease(Option<String>),
 }
 
 // --------------------------------------------------------------------------
@@ -719,101 +550,6 @@ fn cmp_build_identifier(left: &str, right: &str) -> Ordering {
     }
 }
 
-fn increment_decimal_string(value: &str) -> String {
-    let mut digits = value.as_bytes().to_vec();
-    for digit in digits.iter_mut().rev() {
-        if *digit == b'9' {
-            *digit = b'0';
-            continue;
-        }
-        *digit += 1;
-        return digits.into_iter().map(char::from).collect();
-    }
-    let mut result = String::with_capacity(digits.len() + 1);
-    result.push('1');
-    result.extend(digits.into_iter().map(char::from));
-    result
-}
-
-// --------------------------------------------------------------------------
-// Version increment (internal)
-// --------------------------------------------------------------------------
-
-fn increment_version(v: &Version, release: ReleaseType) -> Result<Version, SemverError> {
-    let base_pre = |id: Option<String>| -> Result<PreRelease, SemverError> {
-        match id.as_deref() {
-            Some(s) if !s.is_empty() => parse_pre_release(&format!("{s}.0")),
-            _ => Ok(PreRelease::zero()),
-        }
-    };
-
-    Ok(match release {
-        ReleaseType::Major => {
-            let new_major = if v.minor == 0 && v.patch == 0 && !v.pre_release.is_empty() {
-                v.major
-            } else {
-                v.major + 1
-            };
-            Version::new(new_major, 0, 0)
-        }
-        ReleaseType::Minor => {
-            let new_minor = if v.patch == 0 && !v.pre_release.is_empty() {
-                v.minor
-            } else {
-                v.minor + 1
-            };
-            Version::new(v.major, new_minor, 0)
-        }
-        ReleaseType::Patch => {
-            if v.pre_release.is_empty() {
-                Version::new(v.major, v.minor, v.patch + 1)
-            } else {
-                Version::new(v.major, v.minor, v.patch)
-            }
-        }
-        ReleaseType::PreMajor(id) => Version {
-            major: v.major + 1,
-            minor: 0,
-            patch: 0,
-            pre_release: base_pre(id)?,
-            build: BuildMetadata::default(),
-        },
-        ReleaseType::PreMinor(id) => Version {
-            major: v.major,
-            minor: v.minor + 1,
-            patch: 0,
-            pre_release: base_pre(id)?,
-            build: BuildMetadata::default(),
-        },
-        ReleaseType::PrePatch(id) => Version {
-            major: v.major,
-            minor: v.minor,
-            patch: v.patch + 1,
-            pre_release: base_pre(id)?,
-            build: BuildMetadata::default(),
-        },
-        ReleaseType::PreRelease(id) => {
-            if v.pre_release.is_empty() {
-                Version {
-                    major: v.major,
-                    minor: v.minor,
-                    patch: v.patch + 1,
-                    pre_release: base_pre(id)?,
-                    build: BuildMetadata::default(),
-                }
-            } else {
-                Version {
-                    major: v.major,
-                    minor: v.minor,
-                    patch: v.patch,
-                    pre_release: v.pre_release.increment_last_numeric_or_append(),
-                    build: BuildMetadata::default(),
-                }
-            }
-        }
-    })
-}
-
 // --------------------------------------------------------------------------
 // Tests
 // --------------------------------------------------------------------------
@@ -925,159 +661,6 @@ mod tests {
         assert_ne!(v("1.0.0"), v("2.0.0"));
     }
 
-    // --- increment ---
-
-    #[test]
-    fn inc_basic() {
-        assert_eq!(
-            v("1.2.3")
-                .increment(ReleaseType::Major)
-                .unwrap()
-                .to_string(),
-            "2.0.0"
-        );
-        assert_eq!(
-            v("1.2.3")
-                .increment(ReleaseType::Minor)
-                .unwrap()
-                .to_string(),
-            "1.3.0"
-        );
-        assert_eq!(
-            v("1.2.3")
-                .increment(ReleaseType::Patch)
-                .unwrap()
-                .to_string(),
-            "1.2.4"
-        );
-        assert_eq!(
-            v("1.2.3")
-                .increment(ReleaseType::PreRelease(None))
-                .unwrap()
-                .to_string(),
-            "1.2.4-0"
-        );
-        assert_eq!(
-            v("1.2.3-0")
-                .increment(ReleaseType::PreRelease(None))
-                .unwrap()
-                .to_string(),
-            "1.2.3-1"
-        );
-        assert_eq!(
-            v("1.2.3-alpha.1")
-                .increment(ReleaseType::PreRelease(None))
-                .unwrap()
-                .to_string(),
-            "1.2.3-alpha.2"
-        );
-    }
-
-    #[test]
-    fn inc_pre_prefix() {
-        assert_eq!(
-            v("1.2.3")
-                .increment(ReleaseType::PreMajor(Some("beta".into())))
-                .unwrap()
-                .to_string(),
-            "2.0.0-beta.0"
-        );
-        assert_eq!(
-            v("1.2.3")
-                .increment(ReleaseType::PreMinor(None))
-                .unwrap()
-                .to_string(),
-            "1.3.0-0"
-        );
-        assert_eq!(
-            v("1.2.3")
-                .increment(ReleaseType::PrePatch(None))
-                .unwrap()
-                .to_string(),
-            "1.2.4-0"
-        );
-    }
-
-    #[test]
-    fn inc_from_prerelease() {
-        assert_eq!(
-            v("2.0.0-pre")
-                .increment(ReleaseType::Major)
-                .unwrap()
-                .to_string(),
-            "2.0.0"
-        );
-        assert_eq!(
-            v("1.0.0-pre")
-                .increment(ReleaseType::Minor)
-                .unwrap()
-                .to_string(),
-            "1.0.0"
-        );
-        assert_eq!(
-            v("1.2.3-pre")
-                .increment(ReleaseType::Patch)
-                .unwrap()
-                .to_string(),
-            "1.2.3"
-        );
-    }
-
-    // --- coerce ---
-
-    #[test]
-    fn coerce_versions() {
-        assert_eq!(
-            Version::coerce("1").map(|v| v.to_string()),
-            Some("1.0.0".into())
-        );
-        assert_eq!(
-            Version::coerce("1.2").map(|v| v.to_string()),
-            Some("1.2.0".into())
-        );
-        assert_eq!(
-            Version::coerce("1.2.3").map(|v| v.to_string()),
-            Some("1.2.3".into())
-        );
-        assert_eq!(
-            Version::coerce("1.2.3.4").map(|v| v.to_string()),
-            Some("1.2.3".into())
-        );
-        assert_eq!(
-            Version::coerce("v1.2.3").map(|v| v.to_string()),
-            Some("1.2.3".into())
-        );
-        assert_eq!(
-            Version::coerce("42.6.7.9.3-alpha").map(|v| v.to_string()),
-            Some("42.6.7".into())
-        );
-        assert_eq!(Version::coerce(""), None);
-        assert_eq!(Version::coerce("foo"), None);
-    }
-
-    // --- diff ---
-
-    #[test]
-    fn diff_types() {
-        assert_eq!(v("1.0.0").difference(&v("2.0.0")), Some(ReleaseType::Major));
-        assert_eq!(v("1.0.0").difference(&v("1.1.0")), Some(ReleaseType::Minor));
-        assert_eq!(v("1.0.0").difference(&v("1.0.1")), Some(ReleaseType::Patch));
-        assert_eq!(v("1.0.0").difference(&v("1.0.0")), None);
-        assert_eq!(v("1.0.0+a").difference(&v("1.0.0+b")), None);
-        assert_eq!(
-            v("1.0.0").difference(&v("2.0.0-pre")),
-            Some(ReleaseType::PreMajor(None))
-        );
-        assert_eq!(
-            v("1.0.0").difference(&v("1.1.0-pre")),
-            Some(ReleaseType::PreMinor(None))
-        );
-        assert_eq!(
-            v("1.0.0-alpha").difference(&v("1.0.0-beta")),
-            Some(ReleaseType::PreRelease(None))
-        );
-    }
-
     // --- sort ---
 
     #[test]
@@ -1119,14 +702,6 @@ mod tests {
         assert_eq!(v("1.2.3-alpha.1").pre_release.to_string(), "alpha.1");
     }
 
-    // --- is_prerelease ---
-
-    #[test]
-    fn is_prerelease() {
-        assert!(!v("1.2.3").is_prerelease());
-        assert!(v("1.2.3-alpha").is_prerelease());
-    }
-
     // --- Version::parse static method ---
 
     // --- Ord: release > pre-release ---
@@ -1135,38 +710,6 @@ mod tests {
     fn release_greater_than_prerelease() {
         use core::cmp::Ordering;
         assert_eq!(v("1.0.0").cmp(&v("1.0.0-alpha")), Ordering::Greater);
-    }
-
-    // --- difference: PrePatch ---
-
-    #[test]
-    fn diff_prepatch() {
-        assert_eq!(
-            v("1.0.0").difference(&v("1.0.1-pre")),
-            Some(ReleaseType::PrePatch(None))
-        );
-    }
-
-    // --- increment: all-alpha pre (bump not found) ---
-
-    #[test]
-    fn inc_prerelease_no_numeric() {
-        assert_eq!(
-            v("1.2.3-alpha")
-                .increment(ReleaseType::PreRelease(None))
-                .unwrap()
-                .to_string(),
-            "1.2.3-alpha.0"
-        );
-    }
-
-    #[test]
-    fn increment_rejects_invalid_prerelease_id() {
-        assert!(
-            v("1.2.3")
-                .increment(ReleaseType::PreMajor(Some("alpha beta".into())))
-                .is_err()
-        );
     }
 
     // --- parse errors ---
@@ -1242,29 +785,6 @@ mod tests {
         }
     }
 
-    // --- coerce edge cases ---
-
-    #[test]
-    fn coerce_edge_cases() {
-        // too long string
-        assert_eq!(Version::coerce(&"1".repeat(300)), None);
-        // major exceeds MAX_SAFE_INTEGER → skip and find next number
-        assert_eq!(
-            Version::coerce("9007199254740992.0.0").map(|v| v.to_string()),
-            Some("0.0.0".into())
-        );
-        // trailing dot after major → minor = 0
-        assert_eq!(
-            Version::coerce("1.").map(|v| v.to_string()),
-            Some("1.0.0".into())
-        );
-        // trailing dot after minor → patch = 0
-        assert_eq!(
-            Version::coerce("1.2.").map(|v| v.to_string()),
-            Some("1.2.0".into())
-        );
-    }
-
     // --- SemverError Display ---
 
     #[test]
@@ -1280,21 +800,6 @@ mod tests {
         assert_eq!(PreRelease::parse("beta").unwrap().to_string(), "beta");
         assert_eq!("rc.1".parse::<PreRelease>().unwrap().to_string(), "rc.1");
         assert_eq!(PreRelease::zero().to_string(), "0");
-
-        let mut pre = PreRelease::parse("alpha").unwrap();
-        pre.push_numeric_zero();
-        assert_eq!(pre.to_string(), "alpha.0");
-        assert_eq!(
-            pre.increment_last_numeric_or_append().to_string(),
-            "alpha.1"
-        );
-        assert_eq!(
-            PreRelease::parse("alpha.beta")
-                .unwrap()
-                .increment_last_numeric_or_append()
-                .to_string(),
-            "alpha.beta.0"
-        );
     }
 
     #[test]
@@ -1370,24 +875,6 @@ mod tests {
     }
 
     #[test]
-    fn large_numeric_prerelease_increment_is_preserved() {
-        assert_eq!(
-            PreRelease::parse("18446744073709551616")
-                .unwrap()
-                .increment_last_numeric_or_append()
-                .to_string(),
-            "18446744073709551617"
-        );
-        assert_eq!(
-            PreRelease::parse(&u64::MAX.to_string())
-                .unwrap()
-                .increment_last_numeric_or_append()
-                .to_string(),
-            "18446744073709551616"
-        );
-    }
-
-    #[test]
     fn parse_nr_api() {
         assert_eq!(parse_nr("0").unwrap(), 0);
         assert_eq!(parse_nr("9007199254740991").unwrap(), MAX_SAFE_INTEGER);
@@ -1402,9 +889,6 @@ mod tests {
     fn private_helpers_edge_cases() {
         assert!(parse_pre_release("").is_err());
         assert!(parse_core_number_digits(b"1a", "1a").is_err());
-        assert_eq!(increment_decimal_string("8"), "9");
-        assert_eq!(increment_decimal_string("9"), "10");
-        assert_eq!(increment_decimal_string("99"), "100");
     }
 
     #[test]
