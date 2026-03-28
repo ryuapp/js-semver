@@ -557,7 +557,11 @@ fn cmp_build_identifier(left: &str, right: &str) -> Ordering {
 #[cfg(test)]
 mod tests {
     #[cfg(not(feature = "std"))]
-    use alloc::{string::{String, ToString}, vec, vec::Vec};
+    use alloc::{
+        string::{String, ToString},
+        vec,
+        vec::Vec,
+    };
 
     use super::*;
 
