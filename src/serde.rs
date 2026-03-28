@@ -1,5 +1,5 @@
 #[cfg(not(feature = "std"))]
-use alloc::string::ToString;
+use alloc::string::ToString as _;
 
 use crate::range::Range;
 use crate::version::Version;
