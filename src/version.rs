@@ -1,5 +1,5 @@
 #[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, format, string::String, vec::Vec};
+use alloc::{boxed::Box, format, vec::Vec};
 
 use core::cmp::Ordering;
 use core::fmt;
@@ -557,7 +557,7 @@ fn cmp_build_identifier(left: &str, right: &str) -> Ordering {
 #[cfg(test)]
 mod tests {
     #[cfg(not(feature = "std"))]
-    use alloc::{string::ToString, vec, vec::Vec};
+    use alloc::{string::{String, ToString}, vec, vec::Vec};
 
     use super::*;
 

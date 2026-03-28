@@ -834,7 +834,7 @@ fn is_impossible_comparator(comparator: &Comparator) -> bool {
 #[cfg(test)]
 mod tests {
     #[cfg(not(feature = "std"))]
-    use alloc::{string::ToString, vec::Vec};
+    use alloc::string::ToString;
 
     use core::fmt::{self, Write};
 
