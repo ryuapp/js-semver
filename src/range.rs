@@ -145,27 +145,46 @@ impl Range {
     pub fn min_version(&self) -> Option<Version> {
         let mut candidates: Vec<Version> = vec![];
         for comparator_set in &self.set {
-            if let Some(candidate) = comparator_set_min_version(comparator_set) {
-                candidates.push(candidate);
-            }
+            let Some(candidate) = comparator_set_min_version(comparator_set) else {
+                continue;
+            };
+            candidates.push(candidate);
         }
         candidates.sort();
-        candidates.dedup_by(|left, right| left == right);
-        candidates
-            .into_iter()
-            .find(|candidate| self.satisfies(candidate))
+        candidates.dedup();
+        candidates.into_iter().next()
     }
 
     /// Return the highest version in `versions` that satisfies this range, or `None`.
     #[must_use]
     pub fn max_satisfying<'a>(&self, versions: &'a [Version]) -> Option<&'a Version> {
-        versions.iter().filter(|v| self.satisfies(v)).max()
+        let mut best = None;
+        for version in versions {
+            let is_better = match best {
+                Some(current) => version > current,
+                None => true,
+            };
+            if self.satisfies(version) && is_better {
+                best = Some(version);
+            }
+        }
+        best
     }
 
     /// Return the lowest version in `versions` that satisfies this range, or `None`.
     #[must_use]
     pub fn min_satisfying<'a>(&self, versions: &'a [Version]) -> Option<&'a Version> {
-        versions.iter().filter(|v| self.satisfies(v)).min()
+        let mut best = None;
+        for version in versions {
+            let is_better = match best {
+                Some(current) => version < current,
+                None => true,
+            };
+            if self.satisfies(version) && is_better {
+                best = Some(version);
+            }
+        }
+        best
     }
 }
 
@@ -369,15 +388,12 @@ fn comparator_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
 }
 
 fn next_component(value: u64) -> Result<u64, SemverError> {
-    let next = value
-        .checked_add(1)
-        .ok_or_else(|| SemverError::new("range upper bound exceeds u64 range"))?;
-    if next > crate::MAX_SAFE_INTEGER {
+    if value >= crate::MAX_SAFE_INTEGER {
         return Err(SemverError::new(
             "range upper bound exceeds MAX_SAFE_INTEGER",
         ));
     }
-    Ok(next)
+    Ok(value + 1)
 }
 
 // --------------------------------------------------------------------------
@@ -580,8 +596,9 @@ fn expand_hyphen(a: Partial, b: Partial) -> Result<Vec<Comparator>, SemverError>
         }
     };
     let mut out = vec![lower];
-    if let Some(u) = upper {
-        out.push(u);
+    match upper {
+        Some(upper) => out.push(upper),
+        None => {}
     }
     Ok(out)
 }
@@ -655,16 +672,14 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
                 let len = op.len() + ver.len();
                 buf[..op.len()].copy_from_slice(op);
                 buf[op.len()..len].copy_from_slice(ver);
-                let merged = core::str::from_utf8(&buf[..len])
-                    .map_err(|_| SemverError::new("merged comparator string is not UTF-8"))?;
+                // `t` and `next` are slices of the original `&str`, so their bytes are valid UTF-8.
+                let merged = unsafe { core::str::from_utf8_unchecked(&buf[..len]) };
                 for comparator in parse_token(merged)? {
                     push_canonical_comparator(&mut all, comparator);
                 }
             } else {
-                // operator with no following token → let parse_token produce the error
-                for comparator in parse_token(t)? {
-                    push_canonical_comparator(&mut all, comparator);
-                }
+                // operator with no following token: just surface parse_token's error.
+                let _ = parse_token(t)?;
             }
         } else {
             for comparator in parse_token(t)? {
@@ -929,15 +944,20 @@ fn comparator_set_min_version(comparator_set: &ComparatorSet) -> Option<Version>
     }
     let mut candidates: Vec<Version> = vec![];
     for comparator in &comparator_set.comparators {
-        if let Some(candidate) = lower_bound_candidate(comparator) {
-            candidates.push(candidate);
-        }
+        let Some(candidate) = lower_bound_candidate(comparator) else {
+            continue;
+        };
+        candidates.push(candidate);
     }
     candidates.sort();
-    candidates.dedup_by(|left, right| left == right);
-    candidates
-        .into_iter()
-        .find(|candidate| comparator_set.test(candidate))
+    candidates.dedup();
+    for candidate in candidates {
+        if !comparator_set.test(&candidate) {
+            continue;
+        }
+        return Some(candidate);
+    }
+    None
 }
 
 // --------------------------------------------------------------------------
@@ -949,6 +969,8 @@ mod tests {
     #[cfg(not(feature = "std"))]
     use alloc::{string::ToString, vec::Vec};
 
+    use core::fmt::{self, Write};
+
     use super::*;
     use crate::version::Version;
 
@@ -959,48 +981,64 @@ mod tests {
         s.parse().unwrap()
     }
 
+    fn assert_satisfies_case(range: &str, version: &str, expected: bool) {
+        assert_eq!(r(range).satisfies(&v(version)), expected);
+    }
+
+    fn assert_display_case(input: &str, expected: &str) {
+        assert_eq!(Range::parse(input).unwrap().to_string(), expected);
+    }
+
+    fn assert_invalid_range(input: &str) {
+        assert!(Range::parse(input).is_err());
+    }
+
+    struct FailingWriter {
+        fail_on: &'static str,
+        fail_any: bool,
+    }
+
+    impl Write for FailingWriter {
+        fn write_str(&mut self, s: &str) -> fmt::Result {
+            if self.fail_any || s == self.fail_on {
+                return Err(fmt::Error);
+            }
+            Ok(())
+        }
+    }
+
     // --- satisfies ---
 
     #[test]
     fn satisfies_cases() {
-        let cases = [
-            ("^1.0.0", "1.2.3", true),
-            ("^1.0.0", "1.9.9", true),
-            ("^1.0.0", "2.0.0", false),
-            ("^1.0.0", "0.9.9", false),
-            ("~1.2.0", "1.2.3", true),
-            ("~1.2.0", "1.2.9", true),
-            ("~1.2.0", "1.3.0", false),
-            ("~1.2.0", "1.1.9", false),
-            ("1.0.0 - 2.0.0", "1.5.0", true),
-            ("1.0.0 - 2.0.0", "1.0.0", true),
-            ("1.0.0 - 2.0.0", "2.0.0", true),
-            ("1.0.0 - 2.0.0", "3.0.0", false),
-            (">1.0.0", "2.0.0", true),
-            (">=1.0.0", "1.0.0", true),
-            ("<1.0.0", "0.9.9", true),
-            ("<=1.0.0", "1.0.0", true),
-            ("=1.0.0", "1.0.0", true),
-            ("1.0.0", "1.0.0", true),
-            ("1.x", "1.2.3", true),
-            ("1", "1.0.0", true),
-            ("1", "1.9.9", true),
-            ("1", "2.0.0", false),
-            ("1.2.x", "1.2.9", true),
-            ("*", "1.2.3", true),
-            ("*", "0.0.1", true),
-            ("1.0.0 || 2.0.0", "1.0.0", true),
-            ("1.0.0 || 2.0.0", "2.0.0", true),
-            ("1.0.0 || 2.0.0", "3.0.0", false),
-        ];
-
-        for (range, version, expected) in cases {
-            assert_eq!(
-                r(range).satisfies(&v(version)),
-                expected,
-                "{range} :: {version}"
-            );
-        }
+        assert_satisfies_case("^1.0.0", "1.2.3", true);
+        assert_satisfies_case("^1.0.0", "1.9.9", true);
+        assert_satisfies_case("^1.0.0", "2.0.0", false);
+        assert_satisfies_case("^1.0.0", "0.9.9", false);
+        assert_satisfies_case("~1.2.0", "1.2.3", true);
+        assert_satisfies_case("~1.2.0", "1.2.9", true);
+        assert_satisfies_case("~1.2.0", "1.3.0", false);
+        assert_satisfies_case("~1.2.0", "1.1.9", false);
+        assert_satisfies_case("1.0.0 - 2.0.0", "1.5.0", true);
+        assert_satisfies_case("1.0.0 - 2.0.0", "1.0.0", true);
+        assert_satisfies_case("1.0.0 - 2.0.0", "2.0.0", true);
+        assert_satisfies_case("1.0.0 - 2.0.0", "3.0.0", false);
+        assert_satisfies_case(">1.0.0", "2.0.0", true);
+        assert_satisfies_case(">=1.0.0", "1.0.0", true);
+        assert_satisfies_case("<1.0.0", "0.9.9", true);
+        assert_satisfies_case("<=1.0.0", "1.0.0", true);
+        assert_satisfies_case("=1.0.0", "1.0.0", true);
+        assert_satisfies_case("1.0.0", "1.0.0", true);
+        assert_satisfies_case("1.x", "1.2.3", true);
+        assert_satisfies_case("1", "1.0.0", true);
+        assert_satisfies_case("1", "1.9.9", true);
+        assert_satisfies_case("1", "2.0.0", false);
+        assert_satisfies_case("1.2.x", "1.2.9", true);
+        assert_satisfies_case("*", "1.2.3", true);
+        assert_satisfies_case("*", "0.0.1", true);
+        assert_satisfies_case("1.0.0 || 2.0.0", "1.0.0", true);
+        assert_satisfies_case("1.0.0 || 2.0.0", "2.0.0", true);
+        assert_satisfies_case("1.0.0 || 2.0.0", "3.0.0", false);
     }
 
     #[test]
@@ -1020,10 +1058,10 @@ mod tests {
 
     #[test]
     fn max_satisfying_basic() {
-        let vs: Vec<Version> = ["1.0.0", "1.2.0", "2.0.0", "3.0.0"]
-            .iter()
-            .map(|s| s.parse().unwrap())
-            .collect();
+        let mut vs: Vec<Version> = Vec::new();
+        for s in ["1.0.0", "1.2.0", "2.0.0", "3.0.0"] {
+            vs.push(s.parse().unwrap());
+        }
         assert_eq!(r("^1.0.0").max_satisfying(&vs), Some(&v("1.2.0")));
         assert_eq!(r("^3.0.0").max_satisfying(&vs), Some(&v("3.0.0")));
         assert_eq!(r("^4.0.0").max_satisfying(&vs), None);
@@ -1031,10 +1069,10 @@ mod tests {
 
     #[test]
     fn min_satisfying_basic() {
-        let vs: Vec<Version> = ["1.0.0", "1.2.0", "2.0.0", "3.0.0"]
-            .iter()
-            .map(|s| s.parse().unwrap())
-            .collect();
+        let mut vs: Vec<Version> = Vec::new();
+        for s in ["1.0.0", "1.2.0", "2.0.0", "3.0.0"] {
+            vs.push(s.parse().unwrap());
+        }
         assert_eq!(r("^1.0.0").min_satisfying(&vs), Some(&v("1.0.0")));
         assert_eq!(r(">=2.0.0").min_satisfying(&vs), Some(&v("2.0.0")));
     }
@@ -1061,38 +1099,28 @@ mod tests {
 
     #[test]
     fn parse_valid_and_display_cases() {
-        let cases = [
-            ("^1.0.0", ">=1.0.0 <2.0.0-0"),
-            ("1.0.0", "1.0.0"),
-            ("=1.0.0", "1.0.0"),
-            ("~0.x.0", "<1.0.0-0"),
-            ("~1.x.0", ">=1.0.0 <2.0.0-0"),
-            ("*", "*"),
-            ("* || ^1.2.3", "*"),
-            (">X", "<0.0.0-0"),
-            ("<X", "<0.0.0-0"),
-            ("<x <* || >* 2.x", "<0.0.0-0"),
-            (
-                ">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0",
-                ">=1.0.0 <2.0.0||>=2.0.0 <3.0.0",
-            ),
-            ("~> 1", ">=1.0.0 <2.0.0-0"),
-            ("~ 1.0", ">=1.0.0 <1.1.0-0"),
-            ("~v0.5.2-pre", ">=0.5.2-pre <0.6.0-0"),
-            ("^ 1.2.3", ">=1.2.3 <2.0.0-0"),
-            ("<=1.2.3", "<=1.2.3"),
-            ("<1.2.3", "<1.2.3"),
-            ("x", "*"),
-            ("=x", "*"),
-        ];
-
-        for (input, expected) in cases {
-            assert_eq!(
-                Range::parse(input).unwrap().to_string(),
-                expected,
-                "{input}"
-            );
-        }
+        assert_display_case("^1.0.0", ">=1.0.0 <2.0.0-0");
+        assert_display_case("1.0.0", "1.0.0");
+        assert_display_case("=1.0.0", "1.0.0");
+        assert_display_case("~0.x.0", "<1.0.0-0");
+        assert_display_case("~1.x.0", ">=1.0.0 <2.0.0-0");
+        assert_display_case("*", "*");
+        assert_display_case("* || ^1.2.3", "*");
+        assert_display_case(">X", "<0.0.0-0");
+        assert_display_case("<X", "<0.0.0-0");
+        assert_display_case("<x <* || >* 2.x", "<0.0.0-0");
+        assert_display_case(
+            ">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0",
+            ">=1.0.0 <2.0.0||>=2.0.0 <3.0.0",
+        );
+        assert_display_case("~> 1", ">=1.0.0 <2.0.0-0");
+        assert_display_case("~ 1.0", ">=1.0.0 <1.1.0-0");
+        assert_display_case("~v0.5.2-pre", ">=0.5.2-pre <0.6.0-0");
+        assert_display_case("^ 1.2.3", ">=1.2.3 <2.0.0-0");
+        assert_display_case("<=1.2.3", "<=1.2.3");
+        assert_display_case("<1.2.3", "<1.2.3");
+        assert_display_case("x", "*");
+        assert_display_case("=x", "*");
 
         assert!(Range::parse(">=1.0.0 <2.0.0").is_ok());
         assert!(try_hyphen(">=1.0.0 - 2.0.0").unwrap().is_none());
@@ -1124,6 +1152,7 @@ mod tests {
 
     #[test]
     fn caret_partial() {
+        assert_eq!(Range::parse("^0").unwrap().to_string(), "<1.0.0-0");
         // ^1 → >=1.0.0 <2.0.0-0
         assert!(r("^1").satisfies(&v("1.9.9")));
         assert!(!r("^1").satisfies(&v("2.0.0")));
@@ -1309,65 +1338,59 @@ mod tests {
 
     #[test]
     fn parse_invalid_cases() {
-        let cases = [
-            "01.0.0",
-            "1a.0.0",
-            "9007199254740992.0.0",
-            ">",
-            ">=",
-            "> ",
-            "<",
-            "<=",
-            "=",
-            "^",
-            "~",
-            "~=",
-            "1.0.0 -",
-            "- 2.0.0",
-            "1.0.0 - 2.0.0 - 3.0.0",
-            ">>1.0.0",
-            "><1.0.0",
-            ">=<=1.0.0",
-            "^01.0.0",
-            "~01.0.0",
-            ">01.0.0",
-            ">=01.0.0",
-            "^1.2.3.4",
-            ">=a.b.c",
-            ">1.2.3-0.01",
-            "!!",
-            "??",
-            "1.0.0!",
-            "1.0.0-",
-            "-1.0.0",
-            "^1.0.0-0.01",
-            ">=1.0.0-01",
-            "~1.0.0-01",
-            "1.0.0>",
-            "1.0.0>=",
-            "1.0.0^",
-            "~1.",
-            "^1.",
-            "^1.2.",
-            "~1.2.",
-            ">=1.",
-            ">=1.2.",
-            "1. - 2.0.0",
-            "1.0.0 - 2.",
-            "1.0.0- 2.0.0",
-            "1.0.0 -2.0.0",
-            "!1.0.0",
-            "!=1.0.0",
-            ">1.0.0\x00",
-            "^00.0.0",
-            "~0.00.0",
-            ">=0.0.00",
-            "^9007199254740991.0.0",
-        ];
-
-        for input in cases {
-            assert!(Range::parse(input).is_err(), "{input}");
-        }
+        assert_invalid_range("01.0.0");
+        assert_invalid_range("1a.0.0");
+        assert_invalid_range("9007199254740992.0.0");
+        assert_invalid_range(">");
+        assert_invalid_range(">=");
+        assert_invalid_range("> ");
+        assert_invalid_range("<");
+        assert_invalid_range("<=");
+        assert_invalid_range("=");
+        assert_invalid_range("^");
+        assert_invalid_range("~");
+        assert_invalid_range("~=");
+        assert_invalid_range("1.0.0 -");
+        assert_invalid_range("- 2.0.0");
+        assert_invalid_range("1.0.0 - 2.0.0 - 3.0.0");
+        assert_invalid_range(">>1.0.0");
+        assert_invalid_range("><1.0.0");
+        assert_invalid_range(">=<=1.0.0");
+        assert_invalid_range("^01.0.0");
+        assert_invalid_range("~01.0.0");
+        assert_invalid_range(">01.0.0");
+        assert_invalid_range(">=01.0.0");
+        assert_invalid_range("^1.2.3.4");
+        assert_invalid_range(">=a.b.c");
+        assert_invalid_range(">1.2.3-0.01");
+        assert_invalid_range("!!");
+        assert_invalid_range("??");
+        assert_invalid_range("1.0.0!");
+        assert_invalid_range("1.0.0-");
+        assert_invalid_range("-1.0.0");
+        assert_invalid_range("^1.0.0-0.01");
+        assert_invalid_range(">=1.0.0-01");
+        assert_invalid_range("~1.0.0-01");
+        assert_invalid_range("1.0.0>");
+        assert_invalid_range("1.0.0>=");
+        assert_invalid_range("1.0.0^");
+        assert_invalid_range("~1.");
+        assert_invalid_range("^1.");
+        assert_invalid_range("^1.2.");
+        assert_invalid_range("~1.2.");
+        assert_invalid_range(">=1.");
+        assert_invalid_range(">=1.2.");
+        assert_invalid_range("1. - 2.0.0");
+        assert_invalid_range("1.0.0 - 2.");
+        assert_invalid_range("1.0.0- 2.0.0");
+        assert_invalid_range("1.0.0 -2.0.0");
+        assert_invalid_range("!1.0.0");
+        assert_invalid_range("!=1.0.0");
+        assert_invalid_range(">1.0.0\x00");
+        assert_invalid_range("^00.0.0");
+        assert_invalid_range("~0.00.0");
+        assert_invalid_range(">=0.0.00");
+        assert_invalid_range("^9007199254740991.0.0");
     }
 
     #[test]
@@ -1392,5 +1415,151 @@ mod tests {
         assert!(!range.satisfies(&v("2.0.0-0")));
         assert!(!range.satisfies(&v("2.0.0-alpha")));
         assert!(!range.satisfies(&v("2.0.0")));
+    }
+
+    #[test]
+    fn canonical_comparator_dedup_and_tightening() {
+        assert_eq!(r("<1.2.4 <1.2.3").to_string(), "<1.2.4 <1.2.3");
+        assert_eq!(r("<=1.2.3 <1.2.3").to_string(), "<1.2.3");
+        assert_eq!(r("<1.2.3 <=1.2.3").to_string(), "<1.2.3");
+        assert_eq!(r("1.2.3 1.2.3").to_string(), "1.2.3");
+    }
+
+    #[test]
+    fn comparator_set_min_version_none_for_unsatisfiable_bounds() {
+        let comparator_set = parse_comparator_set(">1.0.0 <1.0.1").unwrap();
+        assert_eq!(comparator_set_min_version(&comparator_set), None);
+    }
+
+    #[test]
+    fn range_display_propagates_formatter_errors() {
+        let mut wildcard_writer = FailingWriter {
+            fail_on: "*",
+            fail_any: false,
+        };
+        assert!(write!(&mut wildcard_writer, "{}", r("*")).is_err());
+
+        let mut or_writer = FailingWriter {
+            fail_on: "||",
+            fail_any: false,
+        };
+        assert!(write!(&mut or_writer, "{}", r("1.0.0 || >=2.0.0")).is_err());
+
+        let mut space_writer = FailingWriter {
+            fail_on: " ",
+            fail_any: false,
+        };
+        assert!(write!(&mut space_writer, "{}", r(">=1.0.0 <2.0.0")).is_err());
+
+        let mut comparator_writer = FailingWriter {
+            fail_on: "",
+            fail_any: true,
+        };
+        assert!(write!(&mut comparator_writer, "{}", r(">=1.0.0")).is_err());
+    }
+
+    #[test]
+    fn helper_branch_coverage_smoke() {
+        assert_eq!(parse_partial("1.2").unwrap().minor, Some(2));
+
+        assert_eq!(expand_tilde(parse_partial("1").unwrap()).unwrap().len(), 2);
+        assert_eq!(
+            expand_tilde(parse_partial("1.2").unwrap()).unwrap().len(),
+            2
+        );
+
+        assert_eq!(expand_caret(parse_partial("1").unwrap()).unwrap().len(), 2);
+        assert_eq!(
+            expand_caret(parse_partial("1.2").unwrap()).unwrap().len(),
+            2
+        );
+        assert_eq!(
+            expand_caret(parse_partial("1.2.3").unwrap()).unwrap().len(),
+            2
+        );
+        assert_eq!(
+            expand_caret(parse_partial("0.2.3").unwrap()).unwrap().len(),
+            2
+        );
+
+        assert_eq!(
+            expand_primitive(None, parse_partial("1").unwrap())
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            expand_primitive(None, parse_partial("1.2").unwrap())
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            expand_primitive(Some(Operator::GreaterThan), parse_partial("1").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(Some(Operator::GreaterThan), parse_partial("1.2").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::GreaterThanOrEqual),
+                parse_partial("1").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::GreaterThanOrEqual),
+                parse_partial("1.2").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(Some(Operator::LessThanOrEqual), parse_partial("1").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::LessThanOrEqual),
+                parse_partial("1.2").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+
+        assert_eq!(
+            expand_hyphen(parse_partial("1.0.0").unwrap(), parse_partial("2").unwrap())
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            expand_hyphen(
+                parse_partial("1.0.0").unwrap(),
+                parse_partial("2.5").unwrap()
+            )
+            .unwrap()
+            .len(),
+            2
+        );
+
+        assert_eq!(
+            parse_range("1.0.0||2.0.0").unwrap().to_string(),
+            "1.0.0||2.0.0"
+        );
+        assert!(try_hyphen("1.0.0 - 2.0.0").unwrap().is_some());
     }
 }
