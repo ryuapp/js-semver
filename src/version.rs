@@ -1069,6 +1069,7 @@ mod tests {
         let cases = [
             "1.2.3".repeat(60),
             "1".into(),
+            "1.2".into(),
             "01.2.3".into(),
             "1.02.3".into(),
             "18446744073709551616.0.0".into(),
@@ -1129,8 +1130,8 @@ mod tests {
         ];
 
         for input in cases {
-            assert!(input.parse::<Version>().is_err(), "{input}");
-            assert!(Version::parse(&input).is_err(), "{input}");
+            assert!(input.parse::<Version>().is_err());
+            assert!(Version::parse(&input).is_err());
         }
     }
 
@@ -1282,6 +1283,15 @@ mod tests {
         assert!(parse_nr("1a").is_err());
         assert!(parse_nr("9007199254740992").is_err());
         assert!(parse_nr("12345678901234567").is_err());
+    }
+
+    #[test]
+    fn private_helpers_edge_cases() {
+        assert!(parse_pre_release("").is_err());
+        assert!(parse_core_number_digits(b"1a", "1a").is_err());
+        assert_eq!(increment_decimal_string("8"), "9");
+        assert_eq!(increment_decimal_string("9"), "10");
+        assert_eq!(increment_decimal_string("99"), "100");
     }
 
     #[test]

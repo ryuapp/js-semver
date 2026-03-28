@@ -56,5 +56,7 @@ mod tests {
     fn deserialize_errors() {
         assert!(serde_json::from_str::<Version>("\"bad\"").is_err());
         assert!(serde_json::from_str::<Range>("\"^\"").is_err());
+        assert!(serde_json::from_str::<Version>("123").is_err());
+        assert!(serde_json::from_str::<Range>("123").is_err());
     }
 }
