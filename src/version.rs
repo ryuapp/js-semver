@@ -1,5 +1,5 @@
 #[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, format, vec::Vec};
+use alloc::{boxed::Box, format};
 
 use core::cmp::Ordering;
 use core::fmt;
@@ -524,7 +524,6 @@ mod tests {
     #[cfg(not(feature = "std"))]
     use alloc::{
         string::{String, ToString},
-        vec,
         vec::Vec,
     };
 
