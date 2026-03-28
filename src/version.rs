@@ -183,6 +183,24 @@ impl fmt::Display for BuildMetadata {
     }
 }
 
+impl PartialOrd for BuildMetadata {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for BuildMetadata {
+    fn cmp(&self, other: &Self) -> Ordering {
+        for (left, right) in self.0.iter().zip(other.0.iter()) {
+            match cmp_build_identifier(left, right) {
+                Ordering::Equal => {}
+                ord @ (Ordering::Less | Ordering::Greater) => return ord,
+            }
+        }
+        self.0.len().cmp(&other.0.len())
+    }
+}
+
 impl FromStr for BuildMetadata {
     type Err = SemverError;
 
@@ -197,7 +215,7 @@ impl FromStr for BuildMetadata {
 
 /// A parsed semantic version.
 ///
-/// Build metadata is stored but ignored during comparison and equality checks.
+/// Build metadata is stored and participates in equality and total ordering.
 #[derive(Debug, Clone, Eq)]
 pub struct Version {
     /// The major version number.
@@ -319,10 +337,15 @@ impl Version {
     /// or `None` if they are equal.
     #[must_use]
     pub fn difference(&self, other: &Self) -> Option<ReleaseType> {
-        if self == other {
+        let precedence = self.cmp_precedence(other);
+        if precedence == Ordering::Equal {
             return None;
         }
-        let high = if self > other { self } else { other };
+        let high = if precedence == Ordering::Greater {
+            self
+        } else {
+            other
+        };
         let rt = if self.major != other.major {
             if high.pre_release.is_empty() {
                 ReleaseType::Major
@@ -346,6 +369,28 @@ impl Version {
         };
         Some(rt)
     }
+
+    /// Compare semantic version precedence, ignoring build metadata.
+    ///
+    /// This matches the `SemVer` precedence rules and the behavior of
+    /// `semver::Version::cmp_precedence`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use core::cmp::Ordering;
+    /// use js_semver::Version;
+    ///
+    /// let left: Version = "1.2.3+build.1".parse().unwrap();
+    /// let right: Version = "1.2.3+build.2".parse().unwrap();
+    ///
+    /// assert_eq!(left.cmp_precedence(&right), Ordering::Equal);
+    /// assert!(left < right);
+    /// ```
+    #[must_use]
+    pub fn cmp_precedence(&self, other: &Self) -> Ordering {
+        compare_core_and_prerelease(self, other)
+    }
 }
 
 impl PartialEq for Version {
@@ -354,6 +399,7 @@ impl PartialEq for Version {
             && self.minor == other.minor
             && self.patch == other.patch
             && self.pre_release == other.pre_release
+            && self.build == other.build
     }
 }
 
@@ -365,23 +411,9 @@ impl PartialOrd for Version {
 
 impl Ord for Version {
     fn cmp(&self, other: &Self) -> Ordering {
-        macro_rules! cmp_field {
-            ($field:ident) => {
-                match self.$field.cmp(&other.$field) {
-                    Ordering::Equal => {}
-                    o => return o,
-                }
-            };
-        }
-        cmp_field!(major);
-        cmp_field!(minor);
-        cmp_field!(patch);
-        // No pre-release > has pre-release (release > pre-release).
-        match (self.pre_release.is_empty(), other.pre_release.is_empty()) {
-            (true, false) => Ordering::Greater,
-            (false, true) => Ordering::Less,
-            (true, true) => Ordering::Equal,
-            (false, false) => self.pre_release.cmp_identifiers(&other.pre_release),
+        match self.cmp_precedence(other) {
+            Ordering::Equal => self.build.cmp(&other.build),
+            ord @ (Ordering::Less | Ordering::Greater) => ord,
         }
     }
 }
@@ -656,6 +688,37 @@ fn cmp_numeric_strings(left: &str, right: &str) -> Ordering {
     }
 }
 
+fn compare_core_and_prerelease(left: &Version, right: &Version) -> Ordering {
+    macro_rules! cmp_field {
+        ($field:ident) => {
+            match left.$field.cmp(&right.$field) {
+                Ordering::Equal => {}
+                ord @ (Ordering::Less | Ordering::Greater) => return ord,
+            }
+        };
+    }
+    cmp_field!(major);
+    cmp_field!(minor);
+    cmp_field!(patch);
+    match (left.pre_release.is_empty(), right.pre_release.is_empty()) {
+        (true, false) => Ordering::Greater,
+        (false, true) => Ordering::Less,
+        (true, true) => Ordering::Equal,
+        (false, false) => left.pre_release.cmp_identifiers(&right.pre_release),
+    }
+}
+
+fn cmp_build_identifier(left: &str, right: &str) -> Ordering {
+    let left_is_numeric = left.bytes().all(|byte| byte.is_ascii_digit());
+    let right_is_numeric = right.bytes().all(|byte| byte.is_ascii_digit());
+    match (left_is_numeric, right_is_numeric) {
+        (true, true) => cmp_numeric_strings(left, right),
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (false, false) => left.cmp(right),
+    }
+}
+
 fn increment_decimal_string(value: &str) -> String {
     let mut digits = value.as_bytes().to_vec();
     for digit in digits.iter_mut().rev() {
@@ -806,8 +869,20 @@ mod tests {
     }
 
     #[test]
-    fn build_ignored_in_eq() {
-        assert_eq!(v("1.2.3+a"), v("1.2.3+b"));
+    fn build_participates_in_eq_and_ord() {
+        assert_ne!(v("1.2.3+a"), v("1.2.3+b"));
+        assert!(v("1.2.3+a") < v("1.2.3+b"));
+        assert!(v("1.2.3+9") < v("1.2.3+a"));
+        assert!(v("1.2.3+demo.90") < v("1.2.3+demo.090"));
+    }
+
+    #[test]
+    fn cmp_precedence_ignores_build() {
+        assert_eq!(v("1.2.3+a").cmp_precedence(&v("1.2.3+b")), Ordering::Equal);
+        assert_eq!(
+            v("1.2.3-alpha+meta.1").cmp_precedence(&v("1.2.3-alpha+meta.2")),
+            Ordering::Equal
+        );
     }
 
     // --- Comparison ---
@@ -817,6 +892,19 @@ mod tests {
         assert!(v("1.0.0") < v("2.0.0"));
         assert!(v("2.0.0") > v("1.0.0"));
         assert_eq!(v("1.0.0"), v("1.0.0"));
+    }
+
+    #[test]
+    fn partial_ord_matches_total_order() {
+        assert_eq!(v("1.0.0").partial_cmp(&v("2.0.0")), Some(Ordering::Less));
+        assert_eq!(
+            v("1.2.3+build.1").partial_cmp(&v("1.2.3+build.2")),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            v("1.2.3-alpha").partial_cmp(&v("1.2.3-alpha")),
+            Some(Ordering::Equal)
+        );
     }
 
     #[test]
@@ -975,6 +1063,7 @@ mod tests {
         assert_eq!(v("1.0.0").difference(&v("1.1.0")), Some(ReleaseType::Minor));
         assert_eq!(v("1.0.0").difference(&v("1.0.1")), Some(ReleaseType::Patch));
         assert_eq!(v("1.0.0").difference(&v("1.0.0")), None);
+        assert_eq!(v("1.0.0+a").difference(&v("1.0.0+b")), None);
         assert_eq!(
             v("1.0.0").difference(&v("2.0.0-pre")),
             Some(ReleaseType::PreMajor(None))
@@ -993,14 +1082,32 @@ mod tests {
 
     #[test]
     fn sort_versions() {
-        let mut vs: Vec<Version> = ["3.0.0", "1.0.0", "2.0.0"]
+        let mut vs: Vec<Version> = ["3.0.0", "1.0.0", "2.0.0", "2.0.0+demo.9", "2.0.0+demo.10"]
             .iter()
             .map(|s| s.parse().unwrap())
             .collect();
         vs.sort();
-        assert_eq!(vs, [v("1.0.0"), v("2.0.0"), v("3.0.0")]);
+        assert_eq!(
+            vs,
+            [
+                v("1.0.0"),
+                v("2.0.0"),
+                v("2.0.0+demo.9"),
+                v("2.0.0+demo.10"),
+                v("3.0.0"),
+            ]
+        );
         vs.sort_by(|a, b| b.cmp(a));
-        assert_eq!(vs, [v("3.0.0"), v("2.0.0"), v("1.0.0")]);
+        assert_eq!(
+            vs,
+            [
+                v("3.0.0"),
+                v("2.0.0+demo.10"),
+                v("2.0.0+demo.9"),
+                v("2.0.0"),
+                v("1.0.0"),
+            ]
+        );
     }
 
     // --- pre field ---
@@ -1212,6 +1319,12 @@ mod tests {
             BuildMetadata::from_parts(Box::from([Box::<str>::from("x"), Box::<str>::from("y")]))
                 .to_string(),
             "x.y"
+        );
+        assert_eq!(
+            BuildMetadata::parse("alpha")
+                .unwrap()
+                .partial_cmp(&BuildMetadata::parse("1").unwrap()),
+            Some(Ordering::Greater)
         );
     }
 

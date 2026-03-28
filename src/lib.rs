@@ -21,6 +21,21 @@
 //! let version: Version = "1.3.0".parse().unwrap();
 //! assert!(range.satisfies(&version));
 //! ```
+//!
+//! ```rust
+//! use core::cmp::Ordering;
+//! use js_semver::Version;
+//!
+//! let stable: Version = "1.2.3+build.1".parse().unwrap();
+//! let rebuilt: Version = "1.2.3+build.2".parse().unwrap();
+//!
+//! // Total ordering includes build metadata.
+//! assert!(stable < rebuilt);
+//! assert_ne!(stable, rebuilt);
+//!
+//! // SemVer precedence ignores build metadata.
+//! assert_eq!(stable.cmp_precedence(&rebuilt), Ordering::Equal);
+//! ```
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
