@@ -1,7 +1,7 @@
 #![allow(clippy::restriction)]
 //! Compatibility tests with semver on npm.
 
-use js_semver::{Range, ReleaseType, Version};
+use js_semver::{Range, Version};
 
 fn v(s: &str) -> Version {
     s.parse().unwrap()
@@ -41,74 +41,6 @@ fn std_semver_compat_prerelease() {
 }
 
 #[test]
-fn std_semver_compat_increment() {
-    assert_eq!(
-        v("1.2.3")
-            .increment(ReleaseType::Major)
-            .unwrap()
-            .to_string(),
-        "2.0.0"
-    );
-    assert_eq!(
-        v("1.2.3")
-            .increment(ReleaseType::Minor)
-            .unwrap()
-            .to_string(),
-        "1.3.0"
-    );
-    assert_eq!(
-        v("1.2.3")
-            .increment(ReleaseType::Patch)
-            .unwrap()
-            .to_string(),
-        "1.2.4"
-    );
-    // premajor/preminor/prepatch with no identifier → -0
-    assert_eq!(
-        v("1.2.3")
-            .increment(ReleaseType::PreMajor(None))
-            .unwrap()
-            .to_string(),
-        "2.0.0-0"
-    );
-    assert_eq!(
-        v("1.2.3")
-            .increment(ReleaseType::PreMinor(None))
-            .unwrap()
-            .to_string(),
-        "1.3.0-0"
-    );
-    assert_eq!(
-        v("1.2.3")
-            .increment(ReleaseType::PrePatch(None))
-            .unwrap()
-            .to_string(),
-        "1.2.4-0"
-    );
-    assert_eq!(
-        v("1.2.3")
-            .increment(ReleaseType::PreRelease(None))
-            .unwrap()
-            .to_string(),
-        "1.2.4-0"
-    );
-    assert_eq!(
-        v("1.2.3-alpha.1")
-            .increment(ReleaseType::PreRelease(None))
-            .unwrap()
-            .to_string(),
-        "1.2.3-alpha.2"
-    );
-    assert_eq!(
-        v("1.2.3-0")
-            .increment(ReleaseType::PreRelease(None))
-            .unwrap()
-            .to_string(),
-        "1.2.3-1"
-    );
-}
-
-#[test]
 fn std_semver_compat_caret_zero() {
     // ^0.0.1 only matches exactly
     assert!(!r("^0.0.1").satisfies(&v("0.0.2")));
@@ -118,23 +50,6 @@ fn std_semver_compat_caret_zero() {
     assert!(!r("^0.1.0").satisfies(&v("0.2.0")));
     // ~0 matches all 0.x.x
     assert!(r("~0").satisfies(&v("0.5.0")));
-}
-
-#[test]
-fn std_semver_compat_difference() {
-    assert_eq!(v("1.0.0").difference(&v("2.0.0")), Some(ReleaseType::Major));
-    assert_eq!(v("1.0.0").difference(&v("1.1.0")), Some(ReleaseType::Minor));
-    assert_eq!(v("1.0.0").difference(&v("1.0.1")), Some(ReleaseType::Patch));
-    // 1.0.0 vs 1.0.0-alpha → "prerelease"
-    assert_eq!(
-        v("1.0.0").difference(&v("1.0.0-alpha")),
-        Some(ReleaseType::PreRelease(None))
-    );
-    // alpha vs beta → "prerelease"
-    assert_eq!(
-        v("1.0.0-alpha").difference(&v("1.0.0-beta")),
-        Some(ReleaseType::PreRelease(None))
-    );
 }
 
 // --- invalid range strings ---

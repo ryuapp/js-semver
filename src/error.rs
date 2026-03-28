@@ -4,6 +4,15 @@ use alloc::string::{String, ToString};
 use core::fmt;
 
 /// Error returned when a version or range string cannot be parsed.
+///
+/// # Examples
+///
+/// ```rust
+/// use js_semver::{SemverError, Version};
+///
+/// let err: SemverError = Version::parse("1.a.b").unwrap_err();
+/// eprintln!("{err}");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SemverError(String);
 
