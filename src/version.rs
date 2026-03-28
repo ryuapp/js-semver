@@ -61,15 +61,6 @@ impl PreRelease {
         parse_pre_release(s)
     }
 
-    /// Parse a pre-release identifier list such as `alpha.1`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SemverError`] if `s` is not valid pre-release metadata.
-    pub fn parse(s: &str) -> Result<Self, SemverError> {
-        Self::new(s)
-    }
-
     #[must_use]
     /// Returns `true` when there are no pre-release identifiers.
     pub fn is_empty(&self) -> bool {
@@ -103,7 +94,7 @@ impl FromStr for PreRelease {
     type Err = SemverError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse(s)
+        Self::new(s)
     }
 }
 
@@ -119,15 +110,6 @@ impl BuildMetadata {
     /// Returns [`SemverError`] if `s` is not valid build metadata.
     pub fn new(s: &str) -> Result<Self, SemverError> {
         parse_build_metadata(s)
-    }
-
-    /// Parse build metadata such as `build.42`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SemverError`] if `s` is not valid build metadata.
-    pub fn parse(s: &str) -> Result<Self, SemverError> {
-        Self::new(s)
     }
 
     #[must_use]
@@ -180,7 +162,7 @@ impl FromStr for BuildMetadata {
     type Err = SemverError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::parse(s)
+        Self::new(s)
     }
 }
 
@@ -801,7 +783,7 @@ mod tests {
     fn prerelease_public_api() {
         assert!(PreRelease::default().is_empty());
         assert_eq!(PreRelease::new("alpha.1").unwrap().to_string(), "alpha.1");
-        assert_eq!(PreRelease::parse("beta").unwrap().to_string(), "beta");
+        assert_eq!(PreRelease::new("beta").unwrap().to_string(), "beta");
         assert_eq!("rc.1".parse::<PreRelease>().unwrap().to_string(), "rc.1");
         assert_eq!(PreRelease::zero().to_string(), "0");
     }
@@ -814,7 +796,7 @@ mod tests {
             "build.001"
         );
         assert_eq!(
-            BuildMetadata::parse("sha.abcdef")
+            BuildMetadata::new("sha.abcdef")
                 .unwrap()
                 .iter()
                 .collect::<Vec<_>>(),
@@ -830,9 +812,9 @@ mod tests {
             "x.y"
         );
         assert_eq!(
-            BuildMetadata::parse("alpha")
+            BuildMetadata::new("alpha")
                 .unwrap()
-                .partial_cmp(&BuildMetadata::parse("1").unwrap()),
+                .partial_cmp(&BuildMetadata::new("1").unwrap()),
             Some(Ordering::Greater)
         );
     }

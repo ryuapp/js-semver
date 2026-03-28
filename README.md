@@ -22,7 +22,7 @@ fn main() {
         major: 1,
         minor: 2,
         patch: 3,
-        pre_release: PreRelease::parse("alpha.1").unwrap(),
+        pre_release: PreRelease::new("alpha.1").unwrap(),
         build: BuildMetadata::default(),
     };
     assert!(!range.satisfies(&version));
