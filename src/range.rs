@@ -596,9 +596,8 @@ fn expand_hyphen(a: Partial, b: Partial) -> Result<Vec<Comparator>, SemverError>
         }
     };
     let mut out = vec![lower];
-    match upper {
-        Some(upper) => out.push(upper),
-        None => {}
+    if let Some(upper) = upper {
+        out.push(upper);
     }
     Ok(out)
 }
@@ -672,14 +671,15 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
                 let len = op.len() + ver.len();
                 buf[..op.len()].copy_from_slice(op);
                 buf[op.len()..len].copy_from_slice(ver);
-                // `t` and `next` are slices of the original `&str`, so their bytes are valid UTF-8.
+                // SAFETY: `t` and `next` are slices of the original `&str`, so their bytes are
+                // valid UTF-8 after concatenation as well.
                 let merged = unsafe { core::str::from_utf8_unchecked(&buf[..len]) };
                 for comparator in parse_token(merged)? {
                     push_canonical_comparator(&mut all, comparator);
                 }
             } else {
                 // operator with no following token: just surface parse_token's error.
-                let _ = parse_token(t)?;
+                drop(parse_token(t)?);
             }
         } else {
             for comparator in parse_token(t)? {
