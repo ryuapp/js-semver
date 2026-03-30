@@ -4,7 +4,8 @@ use alloc::{format, vec, vec::Vec};
 use core::fmt;
 use core::str::FromStr;
 
-use crate::version::{BuildMetadata, PreRelease, Version, parse_nr, parse_pre_release};
+use crate::identifier::{BuildMetadata, PreRelease};
+use crate::version::{Version, parse_nr};
 use crate::{MAX_LENGTH, SemverError};
 
 // --------------------------------------------------------------------------
@@ -233,7 +234,7 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
 
     let pre_release = if patch.is_some() {
         match pre_part {
-            Some(p) if !p.is_empty() => parse_pre_release(p)?,
+            Some(p) if !p.is_empty() => PreRelease::new(p)?,
             Some(_) => return Err(SemverError::new(format!("empty pre-release in: {s}"))),
             None => PreRelease::default(),
         }

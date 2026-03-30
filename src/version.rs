@@ -1,157 +1,12 @@
 #[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, format};
+use alloc::format;
 
 use core::cmp::Ordering;
 use core::fmt;
 use core::str::FromStr;
 
+use crate::identifier::{BuildMetadata, PreRelease};
 use crate::{MAX_LENGTH, MAX_SAFE_INTEGER, SemverError};
-
-// --------------------------------------------------------------------------
-// Identifier
-// --------------------------------------------------------------------------
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum PreReleaseIdentifier {
-    Numeric(Box<str>),
-    AlphaNumeric(Box<str>),
-}
-
-impl fmt::Display for PreReleaseIdentifier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Numeric(n) => f.write_str(n),
-            Self::AlphaNumeric(s) => f.write_str(s),
-        }
-    }
-}
-
-impl PartialOrd for PreReleaseIdentifier {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for PreReleaseIdentifier {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (Self::Numeric(a), Self::Numeric(b)) => cmp_numeric_strings(a, b),
-            (Self::Numeric(_), Self::AlphaNumeric(_)) => Ordering::Less,
-            (Self::AlphaNumeric(_), Self::Numeric(_)) => Ordering::Greater,
-            (Self::AlphaNumeric(a), Self::AlphaNumeric(b)) => a.cmp(b),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-/// A parsed pre-release identifier list such as `alpha.1`.
-pub struct PreRelease(Box<str>);
-
-impl PreRelease {
-    pub(crate) fn zero() -> Self {
-        Self(Box::from("0"))
-    }
-
-    /// Parse a pre-release identifier list such as `alpha.1`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SemverError`] if `s` is not valid pre-release metadata.
-    pub fn new(s: &str) -> Result<Self, SemverError> {
-        parse_pre_release(s)
-    }
-
-    #[must_use]
-    /// Returns `true` when there are no pre-release identifiers.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &str> {
-        self.0.split('.')
-    }
-
-    pub(crate) fn cmp_identifiers(&self, other: &Self) -> Ordering {
-        for (left, right) in self.iter().zip(other.iter()) {
-            match cmp_pre_release_identifier(left, right) {
-                Ordering::Equal => {}
-                ord @ (Ordering::Less | Ordering::Greater) => return ord,
-            }
-        }
-        self.iter().count().cmp(&other.iter().count())
-    }
-}
-
-impl fmt::Display for PreRelease {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl FromStr for PreRelease {
-    type Err = SemverError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::new(s)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-/// Parsed build metadata such as `build.42`.
-pub struct BuildMetadata(Box<str>);
-
-impl BuildMetadata {
-    /// Parse build metadata such as `build.42`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`SemverError`] if `s` is not valid build metadata.
-    pub fn new(s: &str) -> Result<Self, SemverError> {
-        parse_build_metadata(s)
-    }
-
-    #[must_use]
-    /// Returns `true` when there is no build metadata.
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &str> {
-        self.0.split('.')
-    }
-}
-
-impl fmt::Display for BuildMetadata {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
-    }
-}
-
-impl PartialOrd for BuildMetadata {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for BuildMetadata {
-    fn cmp(&self, other: &Self) -> Ordering {
-        for (left, right) in self.iter().zip(other.iter()) {
-            match cmp_build_identifier(left, right) {
-                Ordering::Equal => {}
-                ord @ (Ordering::Less | Ordering::Greater) => return ord,
-            }
-        }
-        self.iter().count().cmp(&other.iter().count())
-    }
-}
-
-impl FromStr for BuildMetadata {
-    type Err = SemverError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Self::new(s)
-    }
-}
 
 // --------------------------------------------------------------------------
 // Version
@@ -299,7 +154,7 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
         if pre_str.is_empty() {
             return Err(SemverError::new("empty pre-release"));
         }
-        parse_pre_release(pre_str)?
+        PreRelease::new(pre_str)?
     } else {
         PreRelease::default()
     };
@@ -307,7 +162,7 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
     // Optional build metadata
     let build = if b.get(pos) == Some(&b'+') {
         pos += 1;
-        parse_build_metadata(&raw[pos..])?
+        BuildMetadata::new(&raw[pos..])?
     } else if pos == b.len() {
         BuildMetadata::default()
     } else {
@@ -392,87 +247,6 @@ pub(crate) fn parse_nr(s: &str) -> Result<u64, SemverError> {
     Ok(n)
 }
 
-pub(crate) fn parse_pre_release(s: &str) -> Result<PreRelease, SemverError> {
-    if s.is_empty() {
-        return Err(SemverError::new("empty pre-release"));
-    }
-    let bytes = s.as_bytes();
-    let mut start = 0;
-    let mut pos = 0;
-    while pos <= bytes.len() {
-        if pos == bytes.len() || bytes[pos] == b'.' {
-            parse_pre_id(&s[start..pos])?;
-            start = pos + 1;
-        }
-        pos += 1;
-    }
-    Ok(PreRelease(Box::from(s)))
-}
-
-fn parse_build_metadata(s: &str) -> Result<BuildMetadata, SemverError> {
-    if s.is_empty() {
-        return Err(SemverError::new("empty build metadata"));
-    }
-    let bytes = s.as_bytes();
-    let mut start = 0;
-    let mut pos = 0;
-    while pos <= bytes.len() {
-        if pos == bytes.len() || bytes[pos] == b'.' {
-            let id = &s[start..pos];
-            if id.is_empty() {
-                return Err(SemverError::new("empty build metadata identifier"));
-            }
-            if !id
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-            {
-                return Err(SemverError::new(format!(
-                    "invalid build metadata identifier: {id}"
-                )));
-            }
-            start = pos + 1;
-        }
-        pos += 1;
-    }
-    Ok(BuildMetadata(Box::from(s)))
-}
-
-fn parse_pre_id(part: &str) -> Result<PreReleaseIdentifier, SemverError> {
-    let b = part.as_bytes();
-    if b.is_empty() {
-        return Err(SemverError::new("empty pre-release identifier"));
-    }
-    // Single pass: validate chars and determine whether the identifier is fully numeric.
-    let mut all_digits = true;
-    for &byte in b {
-        if byte.is_ascii_digit() {
-        } else if byte.is_ascii_alphabetic() || byte == b'-' {
-            all_digits = false;
-        } else {
-            return Err(SemverError::new(format!(
-                "invalid pre-release identifier: {part}"
-            )));
-        }
-    }
-    if all_digits {
-        if b.len() > 1 && b[0] == b'0' {
-            return Err(SemverError::new(format!(
-                "leading zero in pre-release: {part}"
-            )));
-        }
-        Ok(PreReleaseIdentifier::Numeric(Box::from(part)))
-    } else {
-        Ok(PreReleaseIdentifier::AlphaNumeric(Box::from(part)))
-    }
-}
-
-fn cmp_numeric_strings(left: &str, right: &str) -> Ordering {
-    match left.len().cmp(&right.len()) {
-        Ordering::Equal => left.cmp(right),
-        ord @ (Ordering::Less | Ordering::Greater) => ord,
-    }
-}
-
 fn compare_core_and_prerelease(left: &Version, right: &Version) -> Ordering {
     macro_rules! cmp_field {
         ($field:ident) => {
@@ -490,28 +264,6 @@ fn compare_core_and_prerelease(left: &Version, right: &Version) -> Ordering {
         (false, true) => Ordering::Less,
         (true, true) => Ordering::Equal,
         (false, false) => left.pre_release.cmp_identifiers(&right.pre_release),
-    }
-}
-
-fn cmp_build_identifier(left: &str, right: &str) -> Ordering {
-    let left_is_numeric = left.bytes().all(|byte| byte.is_ascii_digit());
-    let right_is_numeric = right.bytes().all(|byte| byte.is_ascii_digit());
-    match (left_is_numeric, right_is_numeric) {
-        (true, true) => cmp_numeric_strings(left, right),
-        (true, false) => Ordering::Less,
-        (false, true) => Ordering::Greater,
-        (false, false) => left.cmp(right),
-    }
-}
-
-fn cmp_pre_release_identifier(left: &str, right: &str) -> Ordering {
-    let left_is_numeric = left.bytes().all(|byte| byte.is_ascii_digit());
-    let right_is_numeric = right.bytes().all(|byte| byte.is_ascii_digit());
-    match (left_is_numeric, right_is_numeric) {
-        (true, true) => cmp_numeric_strings(left, right),
-        (true, false) => Ordering::Less,
-        (false, true) => Ordering::Greater,
-        (false, false) => left.cmp(right),
     }
 }
 
@@ -759,88 +511,6 @@ mod tests {
     }
 
     #[test]
-    fn prerelease_public_api() {
-        assert!(PreRelease::default().is_empty());
-        assert_eq!(PreRelease::new("alpha.1").unwrap().to_string(), "alpha.1");
-        assert_eq!(PreRelease::new("beta").unwrap().to_string(), "beta");
-        assert_eq!("rc.1".parse::<PreRelease>().unwrap().to_string(), "rc.1");
-        assert_eq!(PreRelease::zero().to_string(), "0");
-    }
-
-    #[test]
-    fn build_metadata_public_api() {
-        assert!(BuildMetadata::default().is_empty());
-        assert_eq!(
-            BuildMetadata::new("build.001").unwrap().to_string(),
-            "build.001"
-        );
-        assert_eq!(
-            BuildMetadata::new("sha.abcdef").unwrap().to_string(),
-            "sha.abcdef"
-        );
-        assert_eq!(
-            "meta.42".parse::<BuildMetadata>().unwrap().to_string(),
-            "meta.42"
-        );
-        assert_eq!(BuildMetadata::new("x.y").unwrap().to_string(), "x.y");
-        assert_eq!(
-            BuildMetadata::new("alpha")
-                .unwrap()
-                .partial_cmp(&BuildMetadata::new("1").unwrap()),
-            Some(Ordering::Greater)
-        );
-    }
-
-    #[test]
-    fn prerelease_identifier_ordering() {
-        assert_eq!(
-            PreReleaseIdentifier::Numeric(Box::from("1"))
-                .cmp(&PreReleaseIdentifier::Numeric(Box::from("2"))),
-            Ordering::Less
-        );
-        assert_eq!(
-            PreReleaseIdentifier::Numeric(Box::from("18446744073709551615")).cmp(
-                &PreReleaseIdentifier::Numeric(Box::from("18446744073709551616"))
-            ),
-            Ordering::Less
-        );
-        assert_eq!(
-            PreReleaseIdentifier::Numeric(Box::from("18446744073709551616")).cmp(
-                &PreReleaseIdentifier::Numeric(Box::from("18446744073709551617"))
-            ),
-            Ordering::Less
-        );
-        assert_eq!(
-            PreReleaseIdentifier::Numeric(Box::from("1"))
-                .cmp(&PreReleaseIdentifier::AlphaNumeric(Box::from("alpha"))),
-            Ordering::Less
-        );
-        assert_eq!(
-            PreReleaseIdentifier::AlphaNumeric(Box::from("beta"))
-                .cmp(&PreReleaseIdentifier::Numeric(Box::from("1"))),
-            Ordering::Greater
-        );
-        assert_eq!(
-            PreReleaseIdentifier::AlphaNumeric(Box::from("alpha"))
-                .cmp(&PreReleaseIdentifier::AlphaNumeric(Box::from("beta"))),
-            Ordering::Less
-        );
-        assert_eq!(
-            PreReleaseIdentifier::Numeric(Box::from("1"))
-                .partial_cmp(&PreReleaseIdentifier::Numeric(Box::from("2"))),
-            Some(Ordering::Less)
-        );
-        assert_eq!(
-            PreReleaseIdentifier::Numeric(Box::from("7")).to_string(),
-            "7"
-        );
-        assert_eq!(
-            PreReleaseIdentifier::AlphaNumeric(Box::from("alpha")).to_string(),
-            "alpha"
-        );
-    }
-
-    #[test]
     fn parse_nr_api() {
         assert_eq!(parse_nr("0").unwrap(), 0);
         assert_eq!(parse_nr("9007199254740991").unwrap(), MAX_SAFE_INTEGER);
@@ -853,7 +523,7 @@ mod tests {
 
     #[test]
     fn private_helpers_edge_cases() {
-        assert!(parse_pre_release("").is_err());
+        assert!(PreRelease::new("").is_err());
         assert!(parse_core_number_digits(b"1a", "1a").is_err());
     }
 

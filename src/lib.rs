@@ -35,11 +35,13 @@ pub(crate) const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 pub(crate) const MAX_LENGTH: usize = 256;
 
 mod error;
+mod identifier;
 mod range;
 #[cfg(feature = "serde")]
 mod serde;
 mod version;
 
 pub use error::SemverError;
+pub use identifier::{BuildMetadata, PreRelease};
 pub use range::Range;
-pub use version::{BuildMetadata, PreRelease, Version};
+pub use version::Version;
