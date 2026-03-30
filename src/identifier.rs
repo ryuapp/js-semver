@@ -381,14 +381,22 @@ mod tests {
 
     #[test]
     fn empty_component_shortcuts() {
-        assert_eq!(PreRelease::default().cmp(&PreRelease::zero()), Ordering::Less);
-        assert_eq!(PreRelease::zero().cmp(&PreRelease::default()), Ordering::Greater);
+        assert_eq!(
+            PreRelease::default().cmp(&PreRelease::zero()),
+            Ordering::Less
+        );
+        assert_eq!(
+            PreRelease::zero().cmp(&PreRelease::default()),
+            Ordering::Greater
+        );
         assert_eq!(
             BuildMetadata::default().cmp(&BuildMetadata::new("meta").unwrap()),
             Ordering::Less
         );
         assert_eq!(
-            BuildMetadata::new("meta").unwrap().cmp(&BuildMetadata::default()),
+            BuildMetadata::new("meta")
+                .unwrap()
+                .cmp(&BuildMetadata::default()),
             Ordering::Greater
         );
     }
@@ -424,7 +432,13 @@ mod tests {
         }
 
         assert!(fail_on_left("ok").is_ok());
-        assert_eq!(cmp_dot_separated("bad", "ok", fail_on_left), Ordering::Equal);
-        assert_eq!(cmp_dot_separated("ok", "bad", fail_on_right), Ordering::Equal);
+        assert_eq!(
+            cmp_dot_separated("bad", "ok", fail_on_left),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cmp_dot_separated("ok", "bad", fail_on_right),
+            Ordering::Equal
+        );
     }
 }
