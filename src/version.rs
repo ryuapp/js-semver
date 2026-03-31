@@ -394,10 +394,11 @@ mod tests {
         vs.sort();
         assert_eq!(vs, [v("1.0.0"), v("2.0.0"), v("3.0.0")]);
 
-        let mut with_build: Vec<Version> = ["3.0.0", "1.0.0", "2.0.0", "2.0.0+demo.9", "2.0.0+demo.10"]
-            .iter()
-            .map(|s| s.parse().unwrap())
-            .collect();
+        let mut with_build: Vec<Version> =
+            ["3.0.0", "1.0.0", "2.0.0", "2.0.0+demo.9", "2.0.0+demo.10"]
+                .iter()
+                .map(|s| s.parse().unwrap())
+                .collect();
         with_build.sort_by(|a, b| b.cmp_build(a));
         assert_eq!(
             with_build,
