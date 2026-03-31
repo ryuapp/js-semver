@@ -6,7 +6,7 @@ use crate::version::Version;
 
 impl serde::Serialize for Version {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
+        serializer.collect_str(self)
     }
 }
 
@@ -38,9 +38,9 @@ mod tests {
     fn version_roundtrip() {
         let version: Version = "1.2.3-alpha.1+build.42".parse().unwrap();
         let json = serde_json::to_string(&version).unwrap();
-        assert_eq!(json, "\"1.2.3-alpha.1\"");
+        assert_eq!(json, "\"1.2.3-alpha.1+build.42\"");
         let parsed: Version = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.to_string(), version.to_string());
+        assert_eq!(parsed, version);
     }
 
     #[test]
