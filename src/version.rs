@@ -51,7 +51,7 @@ impl Version {
         parse_version(s)
     }
 
-    /// Compare semantic version precedence, ignoring build metadata.
+    /// Compare semantic version precedence with build metadata as a tiebreaker.
     ///
     /// # Examples
     ///
@@ -62,12 +62,15 @@ impl Version {
     /// let left: Version = "1.2.3+build.1".parse().unwrap();
     /// let right: Version = "1.2.3+build.2".parse().unwrap();
     ///
-    /// assert_eq!(left.cmp_precedence(&right), Ordering::Equal);
-    /// assert!(left < right);
+    /// assert_eq!(left.cmp(&right), Ordering::Equal);
+    /// assert_eq!(left.cmp_build(&right), Ordering::Less);
     /// ```
     #[must_use]
-    pub fn cmp_precedence(&self, other: &Self) -> Ordering {
-        compare_core_and_prerelease(self, other)
+    pub fn cmp_build(&self, other: &Self) -> Ordering {
+        match compare_core_and_prerelease(self, other) {
+            Ordering::Equal => self.build.cmp(&other.build),
+            ord @ (Ordering::Less | Ordering::Greater) => ord,
+        }
     }
 }
 
@@ -77,7 +80,6 @@ impl PartialEq for Version {
             && self.minor == other.minor
             && self.patch == other.patch
             && self.pre_release == other.pre_release
-            && self.build == other.build
     }
 }
 
@@ -89,10 +91,7 @@ impl PartialOrd for Version {
 
 impl Ord for Version {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.cmp_precedence(other) {
-            Ordering::Equal => self.build.cmp(&other.build),
-            ord @ (Ordering::Less | Ordering::Greater) => ord,
-        }
+        compare_core_and_prerelease(self, other)
     }
 }
 
@@ -101,6 +100,9 @@ impl fmt::Display for Version {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)?;
         if !self.pre_release.is_empty() {
             write!(f, "-{}", self.pre_release)?;
+        }
+        if !self.build.is_empty() {
+            write!(f, "+{}", self.build)?;
         }
         Ok(())
     }
@@ -303,12 +305,12 @@ mod tests {
         let cases = [
             ("1.2.3", "1.2.3"),
             ("1.2.3-alpha.1", "1.2.3-alpha.1"),
-            ("1.2.3+build.42", "1.2.3"),
-            ("1.2.3-alpha.1+build", "1.2.3-alpha.1"),
+            ("1.2.3+build.42", "1.2.3+build.42"),
+            ("1.2.3-alpha.1+build", "1.2.3-alpha.1+build"),
             ("v1.2.3", "1.2.3"),
             ("v 1.2.3", "1.2.3"),
             ("1.2.3--pre", "1.2.3--pre"),
-            ("1.2.3-a+b", "1.2.3-a"),
+            ("1.2.3-a+b", "1.2.3-a+b"),
             ("0.0.0", "0.0.0"),
             ("9007199254740991.0.0", "9007199254740991.0.0"),
             ("1.2.3-9007199254740992", "1.2.3-9007199254740992"),
@@ -322,19 +324,22 @@ mod tests {
     }
 
     #[test]
-    fn build_participates_in_eq_and_ord() {
-        assert_ne!(v("1.2.3+a"), v("1.2.3+b"));
-        assert!(v("1.2.3+a") < v("1.2.3+b"));
-        assert!(v("1.2.3+9") < v("1.2.3+a"));
-        assert!(v("1.2.3+demo.90") < v("1.2.3+demo.090"));
+    fn build_is_ignored_in_eq_and_ord() {
+        assert_eq!(v("1.2.3+a"), v("1.2.3+b"));
+        assert_eq!(v("1.2.3+a").cmp(&v("1.2.3+b")), Ordering::Equal);
+        assert_eq!(v("1.2.3+9").cmp(&v("1.2.3+a")), Ordering::Equal);
+        assert_eq!(
+            v("1.2.3+demo.90").cmp(&v("1.2.3+demo.090")),
+            Ordering::Equal
+        );
     }
 
     #[test]
-    fn cmp_precedence_ignores_build() {
-        assert_eq!(v("1.2.3+a").cmp_precedence(&v("1.2.3+b")), Ordering::Equal);
+    fn cmp_build_uses_build_metadata_as_tiebreaker() {
+        assert_eq!(v("1.2.3+a").cmp_build(&v("1.2.3+b")), Ordering::Less);
         assert_eq!(
-            v("1.2.3-alpha+meta.1").cmp_precedence(&v("1.2.3-alpha+meta.2")),
-            Ordering::Equal
+            v("1.2.3-alpha+meta.1").cmp_build(&v("1.2.3-alpha+meta.2")),
+            Ordering::Less
         );
     }
 
@@ -352,7 +357,7 @@ mod tests {
         assert_eq!(v("1.0.0").partial_cmp(&v("2.0.0")), Some(Ordering::Less));
         assert_eq!(
             v("1.2.3+build.1").partial_cmp(&v("1.2.3+build.2")),
-            Some(Ordering::Less)
+            Some(Ordering::Equal)
         );
         assert_eq!(
             v("1.2.3-alpha").partial_cmp(&v("1.2.3-alpha")),
@@ -382,24 +387,21 @@ mod tests {
 
     #[test]
     fn sort_versions() {
-        let mut vs: Vec<Version> = ["3.0.0", "1.0.0", "2.0.0", "2.0.0+demo.9", "2.0.0+demo.10"]
+        let mut vs: Vec<Version> = ["3.0.0", "1.0.0", "2.0.0"]
             .iter()
             .map(|s| s.parse().unwrap())
             .collect();
         vs.sort();
+        assert_eq!(vs, [v("1.0.0"), v("2.0.0"), v("3.0.0")]);
+
+        let mut with_build: Vec<Version> =
+            ["3.0.0", "1.0.0", "2.0.0", "2.0.0+demo.9", "2.0.0+demo.10"]
+                .iter()
+                .map(|s| s.parse().unwrap())
+                .collect();
+        with_build.sort_by(|a, b| b.cmp_build(a));
         assert_eq!(
-            vs,
-            [
-                v("1.0.0"),
-                v("2.0.0"),
-                v("2.0.0+demo.9"),
-                v("2.0.0+demo.10"),
-                v("3.0.0"),
-            ]
-        );
-        vs.sort_by(|a, b| b.cmp(a));
-        assert_eq!(
-            vs,
+            with_build,
             [
                 v("3.0.0"),
                 v("2.0.0+demo.10"),
