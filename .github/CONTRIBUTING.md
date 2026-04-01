@@ -11,4 +11,4 @@ When reporting a bug, provide a minimal reproduction. Issues without a reproduct
 
 ## Security
 
-For security issues, use the process described in [.github/SECURITY.md](./SECURITY.md).
+For security issues, use the process described in [SECURITY.md](./SECURITY.md).
