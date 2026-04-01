@@ -169,11 +169,8 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
     }
     let b = raw.as_bytes();
 
-    // Skip optional v prefix then any trailing spaces (e.g. "v 1.2.3")
+    // Skip optional leading v prefix.
     let mut pos = usize::from(matches!(b.first(), Some(b'v')));
-    while pos < b.len() && b[pos] == b' ' {
-        pos += 1;
-    }
 
     // Parse major.minor.patch in a single forward scan
     let major = parse_nr_at(b, &mut pos, raw)?;
@@ -351,7 +348,6 @@ mod tests {
             ("1.2.3+build.42", "1.2.3+build.42"),
             ("1.2.3-alpha.1+build", "1.2.3-alpha.1+build"),
             ("v1.2.3", "1.2.3"),
-            ("v 1.2.3", "1.2.3"),
             ("1.2.3--pre", "1.2.3--pre"),
             ("1.2.3-a+b", "1.2.3-a+b"),
             ("0.0.0", "0.0.0"),
@@ -482,6 +478,8 @@ mod tests {
             "1.2.3".repeat(60),
             "1".into(),
             "1.2".into(),
+            "V1.2.3".into(),
+            "v 1.2.3".into(),
             "01.2.3".into(),
             "1.02.3".into(),
             "18446744073709551616.0.0".into(),
