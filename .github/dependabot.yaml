@@ -4,6 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 13
     allow:
       - dependency-type: "development"
     commit-message:
@@ -14,6 +16,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    cooldown:
+      default-days: 13
     commit-message:
       prefix: "chore(deps)"
     open-pull-requests-limit: 5
