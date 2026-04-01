@@ -389,19 +389,17 @@ fn next_component(value: u64) -> Result<u64, SemverError> {
 // --------------------------------------------------------------------------
 
 /// Expand a tilde range: `~1.2.3` → `>=1.2.3 <1.3.0-0`.
-fn expand_tilde(p: Partial) -> Result<Vec<Comparator>, SemverError> {
-    Ok(match (p.major, p.minor, p.patch) {
-        (None, _, _) => vec![],
-        (Some(0), None, _) => vec![comparator_lt_upper_bound(1, 0, 0)],
-        (Some(maj), None, _) => vec![
-            comparator_gte(release_version(maj, 0, 0)),
-            comparator_lt_upper_bound(next_component(maj)?, 0, 0),
-        ],
+fn expand_tilde_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), SemverError> {
+    match (p.major, p.minor, p.patch) {
+        (None, _, _) => {}
+        (Some(0), None, _) => push_canonical_comparator(out, comparator_lt_upper_bound(1, 0, 0)),
+        (Some(maj), None, _) => {
+            push_canonical_comparator(out, comparator_gte(release_version(maj, 0, 0)));
+            push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
+        }
         (Some(maj), Some(mnr), None) => {
-            vec![
-                comparator_gte(release_version(maj, mnr, 0)),
-                comparator_lt_upper_bound(maj, next_component(mnr)?, 0),
-            ]
+            push_canonical_comparator(out, comparator_gte(release_version(maj, mnr, 0)));
+            push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
         }
         (Some(maj), Some(mnr), Some(patch)) => {
             let floor = if p.pre_release.is_empty() {
@@ -409,39 +407,45 @@ fn expand_tilde(p: Partial) -> Result<Vec<Comparator>, SemverError> {
             } else {
                 prerelease_version(maj, mnr, patch, p.pre_release)
             };
-            vec![
-                comparator_gte(floor),
-                comparator_lt_upper_bound(maj, next_component(mnr)?, 0),
-            ]
+            push_canonical_comparator(out, comparator_gte(floor));
+            push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
         }
-    })
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+fn expand_tilde(p: Partial) -> Result<Vec<Comparator>, SemverError> {
+    let mut out = Vec::with_capacity(2);
+    expand_tilde_into(&mut out, p)?;
+    Ok(out)
 }
 
 /// Expand a caret range: `^1.2.3` → `>=1.2.3 <2.0.0-0`.
-fn expand_caret(p: Partial) -> Result<Vec<Comparator>, SemverError> {
-    Ok(match (p.major, p.minor, p.patch) {
-        (None, _, _) => vec![],
-        (Some(0), None, _) => vec![comparator_lt_upper_bound(1, 0, 0)],
-        (Some(maj), None, _) => vec![
-            comparator_gte(release_version(maj, 0, 0)),
-            comparator_lt_upper_bound(next_component(maj)?, 0, 0),
-        ],
+fn expand_caret_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), SemverError> {
+    match (p.major, p.minor, p.patch) {
+        (None, _, _) => {}
+        (Some(0), None, _) => push_canonical_comparator(out, comparator_lt_upper_bound(1, 0, 0)),
+        (Some(maj), None, _) => {
+            push_canonical_comparator(out, comparator_gte(release_version(maj, 0, 0)));
+            push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
+        }
         (Some(maj), Some(mnr), None) => {
             if maj > 0 {
-                vec![
-                    comparator_gte(release_version(maj, mnr, 0)),
+                push_canonical_comparator(out, comparator_gte(release_version(maj, mnr, 0)));
+                push_canonical_comparator(
+                    out,
                     comparator_lt_upper_bound(next_component(maj)?, 0, 0),
-                ]
+                );
             } else if mnr > 0 {
-                vec![
-                    comparator_gte(release_version(0, mnr, 0)),
+                push_canonical_comparator(out, comparator_gte(release_version(0, mnr, 0)));
+                push_canonical_comparator(
+                    out,
                     comparator_lt_upper_bound(0, next_component(mnr)?, 0),
-                ]
+                );
             } else {
-                vec![
-                    comparator_gte(release_version(0, 0, 0)),
-                    comparator_lt_upper_bound(0, 1, 0),
-                ]
+                push_canonical_comparator(out, comparator_gte(release_version(0, 0, 0)));
+                push_canonical_comparator(out, comparator_lt_upper_bound(0, 1, 0));
             }
         }
         (Some(maj), Some(mnr), Some(patch)) => {
@@ -450,129 +454,178 @@ fn expand_caret(p: Partial) -> Result<Vec<Comparator>, SemverError> {
             } else {
                 prerelease_version(maj, mnr, patch, p.pre_release)
             };
+            push_canonical_comparator(out, comparator_gte(floor));
             if maj > 0 {
-                vec![
-                    comparator_gte(floor),
+                push_canonical_comparator(
+                    out,
                     comparator_lt_upper_bound(next_component(maj)?, 0, 0),
-                ]
+                );
             } else if mnr > 0 {
-                vec![
-                    comparator_gte(floor),
+                push_canonical_comparator(
+                    out,
                     comparator_lt_upper_bound(0, next_component(mnr)?, 0),
-                ]
+                );
             } else {
-                vec![
-                    comparator_gte(floor),
+                push_canonical_comparator(
+                    out,
                     comparator_lt_upper_bound(0, 0, next_component(patch)?),
-                ]
+                );
             }
         }
-    })
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+fn expand_caret(p: Partial) -> Result<Vec<Comparator>, SemverError> {
+    let mut out = Vec::with_capacity(2);
+    expand_caret_into(&mut out, p)?;
+    Ok(out)
 }
 
 /// Expand an x-range or primitive comparator to concrete [`Comparator`]s.
+fn expand_primitive_into(
+    out: &mut Vec<Comparator>,
+    op: Option<Operator>,
+    p: Partial,
+) -> Result<(), SemverError> {
+    match op {
+        None | Some(Operator::Equal) => expand_equal_primitive(out, p)?,
+        Some(Operator::GreaterThan) => expand_greater_than_primitive(out, p)?,
+        Some(Operator::GreaterThanOrEqual) => expand_greater_than_or_equal_primitive(out, p),
+        Some(Operator::LessThan) => expand_less_than_primitive(out, p),
+        Some(Operator::LessThanOrEqual) => expand_less_than_or_equal_primitive(out, p)?,
+    }
+    Ok(())
+}
+
+fn version_from_partial(p: Partial, major: u64, minor: u64, patch: u64) -> Version {
+    if p.pre_release.is_empty() {
+        release_version(major, minor, patch)
+    } else {
+        prerelease_version(major, minor, patch, p.pre_release)
+    }
+}
+
+fn expand_equal_primitive(out: &mut Vec<Comparator>, p: Partial) -> Result<(), SemverError> {
+    match (p.major, p.minor, p.patch) {
+        (None, _, _) => {}
+        (Some(0), None, _) => {
+            push_canonical_comparator(out, comparator_lt_upper_bound(1, 0, 0));
+        }
+        (Some(maj), None, _) => {
+            push_canonical_comparator(out, comparator_gte(release_version(maj, 0, 0)));
+            push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
+        }
+        (Some(maj), Some(mnr), None) => {
+            push_canonical_comparator(out, comparator_gte(release_version(maj, mnr, 0)));
+            push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
+        }
+        (Some(maj), Some(mnr), Some(patch)) => {
+            push_canonical_comparator(out, comparator_eq(version_from_partial(p, maj, mnr, patch)));
+        }
+    }
+    Ok(())
+}
+
+fn expand_greater_than_primitive(out: &mut Vec<Comparator>, p: Partial) -> Result<(), SemverError> {
+    match (p.major, p.minor, p.patch) {
+        (None, _, _) => push_canonical_comparator(out, comparator_lt_upper_bound(0, 0, 0)),
+        (Some(maj), None, _) => {
+            push_canonical_comparator(
+                out,
+                comparator_gte(release_version(next_component(maj)?, 0, 0)),
+            );
+        }
+        (Some(maj), Some(mnr), None) => {
+            push_canonical_comparator(
+                out,
+                comparator_gte(release_version(maj, next_component(mnr)?, 0)),
+            );
+        }
+        (Some(maj), Some(mnr), Some(patch)) => {
+            push_canonical_comparator(out, comparator_gt(version_from_partial(p, maj, mnr, patch)));
+        }
+    }
+    Ok(())
+}
+
+fn expand_greater_than_or_equal_primitive(out: &mut Vec<Comparator>, p: Partial) {
+    match (p.major, p.minor, p.patch) {
+        (None, _, _) | (Some(0), None, _) => {}
+        (Some(maj), None, _) => {
+            push_canonical_comparator(out, comparator_gte(release_version(maj, 0, 0)));
+        }
+        (Some(maj), Some(mnr), None) => {
+            push_canonical_comparator(out, comparator_gte(release_version(maj, mnr, 0)));
+        }
+        (Some(maj), Some(mnr), Some(patch)) => {
+            push_canonical_comparator(
+                out,
+                comparator_gte(version_from_partial(p, maj, mnr, patch)),
+            );
+        }
+    }
+}
+
+fn expand_less_than_primitive(out: &mut Vec<Comparator>, p: Partial) {
+    match (p.major, p.minor, p.patch) {
+        (None, _, _) => push_canonical_comparator(out, comparator_lt_upper_bound(0, 0, 0)),
+        (Some(maj), None, _) => {
+            push_canonical_comparator(out, comparator_lt_upper_bound(maj, 0, 0));
+        }
+        (Some(maj), Some(mnr), None) => {
+            push_canonical_comparator(out, comparator_lt_upper_bound(maj, mnr, 0));
+        }
+        (Some(maj), Some(mnr), Some(patch)) => {
+            push_canonical_comparator(out, comparator_lt(version_from_partial(p, maj, mnr, patch)));
+        }
+    }
+}
+
+fn expand_less_than_or_equal_primitive(
+    out: &mut Vec<Comparator>,
+    p: Partial,
+) -> Result<(), SemverError> {
+    match (p.major, p.minor, p.patch) {
+        (None, _, _) => {}
+        (Some(maj), None, _) => {
+            push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
+        }
+        (Some(maj), Some(mnr), None) => {
+            push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
+        }
+        (Some(maj), Some(mnr), Some(patch)) => {
+            push_canonical_comparator(
+                out,
+                comparator_lte(version_from_partial(p, maj, mnr, patch)),
+            );
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
 fn expand_primitive(op: Option<Operator>, p: Partial) -> Result<Vec<Comparator>, SemverError> {
-    Ok(match op {
-        // No operator or `=` → exact or x-range
-        None | Some(Operator::Equal) => match (p.major, p.minor, p.patch) {
-            (None, _, _) => vec![],
-            (Some(0), None, _) => vec![comparator_lt_upper_bound(1, 0, 0)],
-            (Some(maj), None, _) => vec![
-                comparator_gte(release_version(maj, 0, 0)),
-                comparator_lt_upper_bound(next_component(maj)?, 0, 0),
-            ],
-            (Some(maj), Some(mnr), None) => {
-                vec![
-                    comparator_gte(release_version(maj, mnr, 0)),
-                    comparator_lt_upper_bound(maj, next_component(mnr)?, 0),
-                ]
-            }
-            (Some(maj), Some(mnr), Some(patch)) => {
-                let ver = if p.pre_release.is_empty() {
-                    release_version(maj, mnr, patch)
-                } else {
-                    prerelease_version(maj, mnr, patch, p.pre_release)
-                };
-                vec![comparator_eq(ver)]
-            }
-        },
-        Some(Operator::GreaterThan) => match (p.major, p.minor, p.patch) {
-            (None, _, _) => vec![comparator_lt_upper_bound(0, 0, 0)], // >* = impossible
-            (Some(maj), None, _) => {
-                vec![comparator_gte(release_version(next_component(maj)?, 0, 0))]
-            }
-            (Some(maj), Some(mnr), None) => {
-                vec![comparator_gte(release_version(
-                    maj,
-                    next_component(mnr)?,
-                    0,
-                ))]
-            }
-            (Some(maj), Some(mnr), Some(patch)) => {
-                let ver = if p.pre_release.is_empty() {
-                    release_version(maj, mnr, patch)
-                } else {
-                    prerelease_version(maj, mnr, patch, p.pre_release)
-                };
-                vec![comparator_gt(ver)]
-            }
-        },
-        Some(Operator::GreaterThanOrEqual) => match (p.major, p.minor, p.patch) {
-            (None, _, _) | (Some(0), None, _) => vec![],
-            (Some(maj), None, _) => vec![comparator_gte(release_version(maj, 0, 0))],
-            (Some(maj), Some(mnr), None) => {
-                vec![comparator_gte(release_version(maj, mnr, 0))]
-            }
-            (Some(maj), Some(mnr), Some(patch)) => {
-                let ver = if p.pre_release.is_empty() {
-                    release_version(maj, mnr, patch)
-                } else {
-                    prerelease_version(maj, mnr, patch, p.pre_release)
-                };
-                vec![comparator_gte(ver)]
-            }
-        },
-        Some(Operator::LessThan) => match (p.major, p.minor, p.patch) {
-            (None, _, _) => vec![comparator_lt_upper_bound(0, 0, 0)], // <* = impossible
-            (Some(maj), None, _) => vec![comparator_lt_upper_bound(maj, 0, 0)],
-            (Some(maj), Some(mnr), None) => vec![comparator_lt_upper_bound(maj, mnr, 0)],
-            (Some(maj), Some(mnr), Some(patch)) => {
-                let ver = if p.pre_release.is_empty() {
-                    release_version(maj, mnr, patch)
-                } else {
-                    prerelease_version(maj, mnr, patch, p.pre_release)
-                };
-                vec![comparator_lt(ver)]
-            }
-        },
-        Some(Operator::LessThanOrEqual) => match (p.major, p.minor, p.patch) {
-            (None, _, _) => vec![],
-            (Some(maj), None, _) => {
-                vec![comparator_lt_upper_bound(next_component(maj)?, 0, 0)]
-            }
-            (Some(maj), Some(mnr), None) => {
-                vec![comparator_lt_upper_bound(maj, next_component(mnr)?, 0)]
-            }
-            (Some(maj), Some(mnr), Some(patch)) => {
-                let ver = if p.pre_release.is_empty() {
-                    release_version(maj, mnr, patch)
-                } else {
-                    prerelease_version(maj, mnr, patch, p.pre_release)
-                };
-                vec![comparator_lte(ver)]
-            }
-        },
-    })
+    let mut out = Vec::with_capacity(2);
+    expand_primitive_into(&mut out, op, p)?;
+    Ok(out)
 }
 
 /// Expand a hyphen range `a - b` to comparators.
-fn expand_hyphen(a: Partial, b: Partial) -> Result<Vec<Comparator>, SemverError> {
-    let lower = comparator_gte(a.floor());
-    let upper = match (b.major, b.minor, b.patch) {
-        (None, _, _) => None,
-        (Some(maj), None, _) => Some(comparator_lt_upper_bound(next_component(maj)?, 0, 0)),
+fn expand_hyphen_into(
+    out: &mut Vec<Comparator>,
+    a: Partial,
+    b: Partial,
+) -> Result<(), SemverError> {
+    push_canonical_comparator(out, comparator_gte(a.floor()));
+    match (b.major, b.minor, b.patch) {
+        (None, _, _) => {}
+        (Some(maj), None, _) => {
+            push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
+        }
         (Some(maj), Some(mnr), None) => {
-            Some(comparator_lt_upper_bound(maj, next_component(mnr)?, 0))
+            push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
         }
         (Some(maj), Some(mnr), Some(patch)) => {
             let ver = if b.pre_release.is_empty() {
@@ -580,13 +633,15 @@ fn expand_hyphen(a: Partial, b: Partial) -> Result<Vec<Comparator>, SemverError>
             } else {
                 prerelease_version(maj, mnr, patch, b.pre_release)
             };
-            Some(comparator_lte(ver))
+            push_canonical_comparator(out, comparator_lte(ver));
         }
-    };
-    let mut out = vec![lower];
-    if let Some(upper) = upper {
-        out.push(upper);
     }
+    Ok(())
+}
+
+fn expand_hyphen(a: Partial, b: Partial) -> Result<Vec<Comparator>, SemverError> {
+    let mut out = Vec::with_capacity(2);
+    expand_hyphen_into(&mut out, a, b)?;
     Ok(out)
 }
 
@@ -600,7 +655,6 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
         return Err(SemverError::new("range string too long"));
     }
 
-    // Split by `||` inline, avoiding a Vec<&str> allocation.
     let bytes = s.as_bytes();
     let mut set = Vec::with_capacity(count_or_groups(bytes));
     let mut start = 0;
@@ -639,20 +693,17 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
         });
     }
 
-    // Try hyphen range first.
     if let Some(comps) = try_hyphen(s)? {
         return Ok(ComparatorSet { comparators: comps });
     }
 
-    let mut all = vec![];
     let bytes = s.as_bytes();
+    let mut all = Vec::with_capacity(count_whitespace_tokens(bytes).saturating_mul(2));
     let mut pos = 0;
     while let Some(t) = next_whitespace_token(s, bytes, &mut pos) {
         let is_op_only = matches!(t, ">" | ">=" | "<" | "<=" | "=" | "^" | "~" | "~=" | "~>");
         if is_op_only {
             if let Some(next) = next_whitespace_token(s, bytes, &mut pos) {
-                // Concatenate op + version on the stack to avoid a heap allocation.
-                // Operators are <=2 bytes; the whole range is <=MAX_LENGTH bytes.
                 let mut buf = [0u8; 258];
                 let op = t.as_bytes();
                 let ver = next.as_bytes();
@@ -662,17 +713,12 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
                 // SAFETY: `t` and `next` are slices of the original `&str`, so their bytes are
                 // valid UTF-8 after concatenation as well.
                 let merged = unsafe { core::str::from_utf8_unchecked(&buf[..len]) };
-                for comparator in parse_token(merged)? {
-                    push_canonical_comparator(&mut all, comparator);
-                }
+                parse_token_into(&mut all, merged)?;
             } else {
-                // operator with no following token: just surface parse_token's error.
-                drop(parse_token(t)?);
+                parse_token_into(&mut all, t)?;
             }
         } else {
-            for comparator in parse_token(t)? {
-                push_canonical_comparator(&mut all, comparator);
-            }
+            parse_token_into(&mut all, t)?;
         }
     }
     Ok(ComparatorSet { comparators: all })
@@ -700,6 +746,24 @@ fn count_or_groups(bytes: &[u8]) -> usize {
             count += 1;
             pos += 2;
         } else {
+            pos += 1;
+        }
+    }
+    count
+}
+
+fn count_whitespace_tokens(bytes: &[u8]) -> usize {
+    let mut count = 0;
+    let mut pos = 0;
+    while pos < bytes.len() {
+        while pos < bytes.len() && bytes[pos].is_ascii_whitespace() {
+            pos += 1;
+        }
+        if pos >= bytes.len() {
+            break;
+        }
+        count += 1;
+        while pos < bytes.len() && !bytes[pos].is_ascii_whitespace() {
             pos += 1;
         }
     }
@@ -753,13 +817,12 @@ fn try_hyphen(s: &str) -> Result<Option<Vec<Comparator>>, SemverError> {
     Ok(None)
 }
 
-fn parse_token(s: &str) -> Result<Vec<Comparator>, SemverError> {
+fn parse_token_into(all: &mut Vec<Comparator>, s: &str) -> Result<(), SemverError> {
     let s = s.trim();
     if s.is_empty() || s == "*" {
-        return Ok(vec![]);
+        return Ok(());
     }
 
-    // Standalone `-` is not a valid token (fragment of an incomplete hyphen range).
     if s == "-" {
         return Err(SemverError::new("invalid token: -"));
     }
@@ -770,52 +833,56 @@ fn parse_token(s: &str) -> Result<Vec<Comparator>, SemverError> {
         if rest.is_empty() {
             return Err(SemverError::new("missing version after ~"));
         }
-        return expand_tilde(parse_partial(rest)?);
+        return expand_tilde_into(all, parse_partial(rest)?);
     }
     if let Some(rest) = s.strip_prefix('^') {
         let rest = rest.trim();
         if rest.is_empty() {
             return Err(SemverError::new("missing version after ^"));
         }
-        return expand_caret(parse_partial(rest)?);
+        return expand_caret_into(all, parse_partial(rest)?);
     }
     if let Some(rest) = s.strip_prefix(">=") {
         let rest = rest.trim();
         if rest.is_empty() {
             return Err(SemverError::new("missing version after >="));
         }
-        return expand_primitive(Some(Operator::GreaterThanOrEqual), parse_partial(rest)?);
+        return expand_primitive_into(
+            all,
+            Some(Operator::GreaterThanOrEqual),
+            parse_partial(rest)?,
+        );
     }
     if let Some(rest) = s.strip_prefix("<=") {
         let rest = rest.trim();
         if rest.is_empty() {
             return Err(SemverError::new("missing version after <="));
         }
-        return expand_primitive(Some(Operator::LessThanOrEqual), parse_partial(rest)?);
+        return expand_primitive_into(all, Some(Operator::LessThanOrEqual), parse_partial(rest)?);
     }
     if let Some(rest) = s.strip_prefix('>') {
         let rest = rest.trim();
         if rest.is_empty() {
             return Err(SemverError::new("missing version after >"));
         }
-        return expand_primitive(Some(Operator::GreaterThan), parse_partial(rest)?);
+        return expand_primitive_into(all, Some(Operator::GreaterThan), parse_partial(rest)?);
     }
     if let Some(rest) = s.strip_prefix('<') {
         let rest = rest.trim();
         if rest.is_empty() {
             return Err(SemverError::new("missing version after <"));
         }
-        return expand_primitive(Some(Operator::LessThan), parse_partial(rest)?);
+        return expand_primitive_into(all, Some(Operator::LessThan), parse_partial(rest)?);
     }
     if let Some(rest) = s.strip_prefix('=') {
         let rest = rest.trim();
         if rest.is_empty() {
             return Err(SemverError::new("missing version after ="));
         }
-        return expand_primitive(Some(Operator::Equal), parse_partial(rest)?);
+        return expand_primitive_into(all, Some(Operator::Equal), parse_partial(rest)?);
     }
 
-    expand_primitive(None, parse_partial(s)?)
+    expand_primitive_into(all, None, parse_partial(s)?)
 }
 
 fn push_canonical_comparator(all: &mut Vec<Comparator>, new: Comparator) {
@@ -1274,8 +1341,11 @@ mod tests {
     }
 
     #[test]
-    fn helper_branch_coverage_smoke() {
+    fn helper_count_and_expand_tilde_caret_coverage() {
         assert_eq!(parse_partial("1.2").unwrap().minor, Some(2));
+        assert_eq!(count_whitespace_tokens(b""), 0);
+        assert_eq!(count_whitespace_tokens(b">=1.0.0 <2.0.0"), 2);
+        assert_eq!(count_whitespace_tokens(b"  >=1.0.0   <2.0.0  "), 2);
 
         assert_eq!(expand_tilde(parse_partial("1").unwrap()).unwrap().len(), 2);
         assert_eq!(
@@ -1296,7 +1366,10 @@ mod tests {
             expand_caret(parse_partial("0.2.3").unwrap()).unwrap().len(),
             2
         );
+    }
 
+    #[test]
+    fn helper_expand_primitive_equal_coverage() {
         assert_eq!(
             expand_primitive(None, parse_partial("1").unwrap())
                 .unwrap()
@@ -1310,6 +1383,22 @@ mod tests {
             2
         );
         assert_eq!(
+            expand_primitive(None, parse_partial("0").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(None, parse_partial("1.2.3-alpha").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn helper_expand_primitive_greater_coverage() {
+        assert_eq!(
             expand_primitive(Some(Operator::GreaterThan), parse_partial("1").unwrap())
                 .unwrap()
                 .len(),
@@ -1321,6 +1410,25 @@ mod tests {
                 .len(),
             1
         );
+        assert_eq!(
+            expand_primitive(Some(Operator::GreaterThan), parse_partial("*").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::GreaterThan),
+                parse_partial("1.2.3-alpha").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn helper_expand_primitive_greater_equal_coverage() {
         assert_eq!(
             expand_primitive(
                 Some(Operator::GreaterThanOrEqual),
@@ -1340,6 +1448,47 @@ mod tests {
             1
         );
         assert_eq!(
+            expand_primitive(
+                Some(Operator::GreaterThanOrEqual),
+                parse_partial("*").unwrap()
+            )
+            .unwrap()
+            .len(),
+            0
+        );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::GreaterThanOrEqual),
+                parse_partial("1.2.3-alpha").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn helper_expand_primitive_less_coverage() {
+        assert_eq!(
+            expand_primitive(Some(Operator::LessThan), parse_partial("1").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::LessThan),
+                parse_partial("1.2.3-alpha").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn helper_expand_primitive_less_equal_coverage() {
+        assert_eq!(
             expand_primitive(Some(Operator::LessThanOrEqual), parse_partial("1").unwrap())
                 .unwrap()
                 .len(),
@@ -1354,7 +1503,19 @@ mod tests {
             .len(),
             1
         );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::LessThanOrEqual),
+                parse_partial("1.2.3-alpha").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+    }
 
+    #[test]
+    fn helper_expand_hyphen_and_parse_range_coverage() {
         assert_eq!(
             expand_hyphen(parse_partial("1.0.0").unwrap(), parse_partial("2").unwrap())
                 .unwrap()
