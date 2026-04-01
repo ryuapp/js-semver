@@ -2,10 +2,20 @@
 #![cfg_attr(test, allow(clippy::restriction))]
 //! # js-semver
 //!
-//! [![License](https://img.shields.io/github/license/ryuapp/js-semver?labelColor=171717&color=39b54a&label=License)](https://github.com/ryuapp/js-semver/blob/main/LICENSE)
-//! [![crates](https://img.shields.io/crates/v/js-semver?labelColor=171717&color=39b54a)](https://crates.io/crates/js-semver)
-//! [![github repo](https://img.shields.io/badge/GitHub-ryuapp/js--semver-171717?labelColor=171717&color=39b54a)](https://github.com/ryuapp/js-semver)
-//! [![codecov](https://codecov.io/gh/ryuapp/js-semver/graph/badge.svg?token=P7NMEB4IP7)](https://codecov.io/gh/ryuapp/js-semver)
+//! <p>
+//!   <a href="https://github.com/ryuapp/js-semver/blob/main/LICENSE">
+//!     <img alt="License" src="https://img.shields.io/github/license/ryuapp/js-semver?labelColor=171717&color=39b54a&label=License">
+//!   </a>
+//!   <a href="https://crates.io/crates/js-semver">
+//!     <img alt="crates" src="https://img.shields.io/crates/v/js-semver?labelColor=171717&color=39b54a">
+//!   </a>
+//!   <a href="https://github.com/ryuapp/js-semver">
+//!     <img alt="github repo" src="https://img.shields.io/badge/GitHub-ryuapp/js--semver-171717?labelColor=171717&color=39b54a">
+//!   </a>
+//!   <a href="https://codecov.io/gh/ryuapp/js-semver">
+//!     <img alt="codecov" src="https://codecov.io/gh/ryuapp/js-semver/graph/badge.svg?token=P7NMEB4IP7">
+//!   </a>
+//! </p>
 //!
 //! A parser and evaluator for semantic versioning in JavaScript, including Node.js and Deno.
 //!
