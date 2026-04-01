@@ -18,6 +18,16 @@ impl PreRelease {
 
     /// Parse a pre-release identifier list such as `alpha.1`.
     ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use js_semver::PreRelease;
+    ///
+    /// let pre = PreRelease::new("alpha.1").unwrap();
+    ///
+    /// assert_eq!(pre.to_string(), "alpha.1");
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`SemverError`] if `s` is not valid pre-release metadata.
@@ -31,6 +41,15 @@ impl PreRelease {
 
     #[must_use]
     /// Returns `true` when there are no pre-release identifiers.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use js_semver::PreRelease;
+    ///
+    /// assert!(PreRelease::default().is_empty());
+    /// assert!(!PreRelease::new("rc.1").unwrap().is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
@@ -77,6 +96,16 @@ pub struct BuildMetadata(Box<str>);
 impl BuildMetadata {
     /// Parse build metadata such as `build.42`.
     ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use js_semver::BuildMetadata;
+    ///
+    /// let build = BuildMetadata::new("build.42").unwrap();
+    ///
+    /// assert_eq!(build.to_string(), "build.42");
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`SemverError`] if `s` is not valid build metadata.
@@ -90,6 +119,15 @@ impl BuildMetadata {
 
     #[must_use]
     /// Returns `true` when there is no build metadata.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use js_semver::BuildMetadata;
+    ///
+    /// assert!(BuildMetadata::default().is_empty());
+    /// assert!(!BuildMetadata::new("sha.abcdef").unwrap().is_empty());
+    /// ```
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
