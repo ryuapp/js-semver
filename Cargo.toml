@@ -66,6 +66,7 @@ map_err_ignore = "allow"
 exhaustive_enums = "allow"
 exhaustive_structs = "allow"
 single_call_fn = "allow"
+needless_doctest_main = "allow"
 
 # Panic prevention (deny in production code)
 unwrap_used = "deny"
