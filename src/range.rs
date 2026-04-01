@@ -1341,8 +1341,11 @@ mod tests {
     }
 
     #[test]
-    fn helper_branch_coverage_smoke() {
+    fn helper_count_and_expand_tilde_caret_coverage() {
         assert_eq!(parse_partial("1.2").unwrap().minor, Some(2));
+        assert_eq!(count_whitespace_tokens(b""), 0);
+        assert_eq!(count_whitespace_tokens(b">=1.0.0 <2.0.0"), 2);
+        assert_eq!(count_whitespace_tokens(b"  >=1.0.0   <2.0.0  "), 2);
 
         assert_eq!(expand_tilde(parse_partial("1").unwrap()).unwrap().len(), 2);
         assert_eq!(
@@ -1363,7 +1366,10 @@ mod tests {
             expand_caret(parse_partial("0.2.3").unwrap()).unwrap().len(),
             2
         );
+    }
 
+    #[test]
+    fn helper_expand_primitive_equal_coverage() {
         assert_eq!(
             expand_primitive(None, parse_partial("1").unwrap())
                 .unwrap()
@@ -1377,6 +1383,22 @@ mod tests {
             2
         );
         assert_eq!(
+            expand_primitive(None, parse_partial("0").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(None, parse_partial("1.2.3-alpha").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn helper_expand_primitive_greater_coverage() {
+        assert_eq!(
             expand_primitive(Some(Operator::GreaterThan), parse_partial("1").unwrap())
                 .unwrap()
                 .len(),
@@ -1388,6 +1410,25 @@ mod tests {
                 .len(),
             1
         );
+        assert_eq!(
+            expand_primitive(Some(Operator::GreaterThan), parse_partial("*").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::GreaterThan),
+                parse_partial("1.2.3-alpha").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn helper_expand_primitive_greater_equal_coverage() {
         assert_eq!(
             expand_primitive(
                 Some(Operator::GreaterThanOrEqual),
@@ -1407,6 +1448,47 @@ mod tests {
             1
         );
         assert_eq!(
+            expand_primitive(
+                Some(Operator::GreaterThanOrEqual),
+                parse_partial("*").unwrap()
+            )
+            .unwrap()
+            .len(),
+            0
+        );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::GreaterThanOrEqual),
+                parse_partial("1.2.3-alpha").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn helper_expand_primitive_less_coverage() {
+        assert_eq!(
+            expand_primitive(Some(Operator::LessThan), parse_partial("1").unwrap())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::LessThan),
+                parse_partial("1.2.3-alpha").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn helper_expand_primitive_less_equal_coverage() {
+        assert_eq!(
             expand_primitive(Some(Operator::LessThanOrEqual), parse_partial("1").unwrap())
                 .unwrap()
                 .len(),
@@ -1421,7 +1503,19 @@ mod tests {
             .len(),
             1
         );
+        assert_eq!(
+            expand_primitive(
+                Some(Operator::LessThanOrEqual),
+                parse_partial("1.2.3-alpha").unwrap()
+            )
+            .unwrap()
+            .len(),
+            1
+        );
+    }
 
+    #[test]
+    fn helper_expand_hyphen_and_parse_range_coverage() {
         assert_eq!(
             expand_hyphen(parse_partial("1.0.0").unwrap(), parse_partial("2").unwrap())
                 .unwrap()
