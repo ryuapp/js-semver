@@ -78,7 +78,7 @@ struct ComparatorSet {
 impl ComparatorSet {
     fn test(&self, v: &Version) -> bool {
         if self.comparators.is_empty() {
-            return true; // '*' matches everything
+            return v.pre_release.is_empty();
         }
 
         if v.pre_release.is_empty() {
@@ -1076,12 +1076,17 @@ mod tests {
     fn wildcard_operator_forms() {
         // ~* → empty comparators → matches everything
         assert!(r("~*").satisfies(&v("1.0.0")));
+        assert!(!r("~*").satisfies(&v("1.0.0-alpha")));
         // ^* → empty comparators → matches everything
         assert!(r("^*").satisfies(&v("1.0.0")));
+        assert!(!r("^*").satisfies(&v("1.0.0-alpha")));
         // >=* → empty comparators → matches everything
         assert!(r(">=*").satisfies(&v("1.0.0")));
+        assert!(!r(">=*").satisfies(&v("1.0.0-alpha")));
         // <=* → empty comparators → matches everything
         assert!(r("<=*").satisfies(&v("99.0.0")));
+        assert!(!r("<=*").satisfies(&v("1.0.0-alpha")));
+        assert!(!r("*").satisfies(&v("1.0.0-alpha")));
         // <* → c_lt(0.0.0) → impossible
         assert!(!r("<*").satisfies(&v("0.0.0")));
     }
