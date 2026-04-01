@@ -1,25 +1,50 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(test, allow(clippy::restriction))]
+//! # js-semver
+//!
+//! <p>
+//!   <a href="https://github.com/ryuapp/js-semver/blob/main/LICENSE">
+//!     <img alt="License" src="https://img.shields.io/github/license/ryuapp/js-semver?labelColor=171717&color=39b54a&label=License">
+//!   </a>
+//!   <a href="https://crates.io/crates/js-semver">
+//!     <img alt="crates" src="https://img.shields.io/crates/v/js-semver?labelColor=171717&color=39b54a">
+//!   </a>
+//!   <a href="https://github.com/ryuapp/js-semver">
+//!     <img alt="github repo" src="https://img.shields.io/badge/GitHub-ryuapp/js--semver-171717?labelColor=171717&color=39b54a">
+//!   </a>
+//!   <a href="https://codecov.io/gh/ryuapp/js-semver">
+//!     <img alt="codecov" src="https://codecov.io/gh/ryuapp/js-semver/graph/badge.svg?token=P7NMEB4IP7">
+//!   </a>
+//! </p>
+//!
 //! A parser and evaluator for semantic versioning in JavaScript, including Node.js and Deno.
+//!
+//! This crate is designed for the JavaScript ecosystem. It maintains high
+//! compatibility with the behavior of [node-semver](https://github.com/npm/node-semver)
+//! (the one npm uses) and has zero dependencies by default.
 //!
 //! # Examples
 //!
 //! ```rust
 //! use js_semver::{BuildMetadata, PreRelease, Range, Version};
 //!
-//! let range: Range = ">=1.2.3 <1.8.0".parse().unwrap();
+//! fn main() {
+//!     let range: Range = ">=4.1.0 <5.0.0".parse().unwrap();
 //!
-//! let version = Version {
-//!     major: 1,
-//!     minor: 2,
-//!     patch: 3,
-//!     pre_release: PreRelease::new("alpha.1").unwrap(),
-//!     build: BuildMetadata::default(),
-//! };
-//! assert!(!range.satisfies(&version));
+//!     // Pre-release versions are not included in the range unless explicitly specified.
+//!     let version = Version {
+//!         major: 4,
+//!         minor: 1,
+//!         patch: 0,
+//!         pre_release: PreRelease::new("rc.1").unwrap(),
+//!         build: BuildMetadata::default(),
+//!     };
+//!     assert!(!range.satisfies(&version));
 //!
-//! let version: Version = "1.3.0".parse().unwrap();
-//! assert!(range.satisfies(&version));
+//!     // Stable version is included in the range.
+//!     let version: Version = "4.1.0".parse().unwrap();
+//!     assert!(range.satisfies(&version));
+//! }
 //! ```
 
 #[cfg(not(feature = "std"))]

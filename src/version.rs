@@ -14,7 +14,23 @@ use crate::{MAX_LENGTH, MAX_SAFE_INTEGER, SemverError};
 
 /// A parsed semantic version.
 ///
-/// Build metadata is stored and participates in equality and total ordering.
+/// Build metadata is stored and included in the version's string form.
+/// Direct [`Version`] comparison ignores build metadata.
+/// Use [`Version::cmp_build`] when build metadata should be used as a
+/// tiebreaker.
+///
+/// # Examples
+///
+/// ```rust
+/// use js_semver::Version;
+///
+/// let version = Version::parse("19.3.0-canary-044d56f3-20260330").unwrap();
+///
+/// assert_eq!(version.major, 19);
+/// assert_eq!(version.minor, 3);
+/// assert_eq!(version.patch, 0);
+/// assert_eq!(version.to_string(), "19.3.0-canary-044d56f3-20260330");
+/// ```
 #[derive(Debug, Clone, Eq)]
 pub struct Version {
     /// The major version number.
@@ -31,6 +47,18 @@ pub struct Version {
 
 impl Version {
     /// Create a new `Version` with no pre-release or build metadata.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use js_semver::Version;
+    ///
+    /// let version = Version::new(1, 2, 3);
+    ///
+    /// assert_eq!(version.to_string(), "1.2.3");
+    /// assert!(version.pre_release.is_empty());
+    /// assert!(version.build.is_empty());
+    /// ```
     #[must_use]
     pub fn new(major: u64, minor: u64, patch: u64) -> Self {
         Self {
@@ -44,6 +72,19 @@ impl Version {
 
     /// Parse a version string.
     ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use js_semver::Version;
+    ///
+    /// let version = Version::parse("1.2.3-alpha.1").unwrap();
+    ///
+    /// assert_eq!(version.major, 1);
+    /// assert_eq!(version.minor, 2);
+    /// assert_eq!(version.patch, 3);
+    /// assert_eq!(version.pre_release.to_string(), "alpha.1");
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`SemverError`] if `s` is not a valid semver string.
@@ -52,6 +93,8 @@ impl Version {
     }
 
     /// Compare semantic version precedence with build metadata as a tiebreaker.
+    ///
+    /// This is equivalent to `node-semver`'s `compareBuild()`.
     ///
     /// # Examples
     ///

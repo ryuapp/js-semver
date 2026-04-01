@@ -109,6 +109,20 @@ impl ComparatorSet {
 }
 
 /// A version range, e.g. `^1.0.0` or `>=1.0.0 <2.0.0-0`.
+///
+/// Its string form is canonicalized, so `to_string()` may differ from the
+/// original input when wildcards, build metadata, or redundant unions are
+/// normalized away.
+///
+/// # Examples
+///
+/// ```rust
+/// use js_semver::Range;
+///
+/// assert_eq!(Range::parse("^1.2.3").unwrap().to_string(), ">=1.2.3 <2.0.0-0");
+/// assert_eq!(Range::parse("^1.2.3 || *").unwrap().to_string(), "*");
+/// assert_eq!(Range::parse("1.x.x+experimental").unwrap().to_string(), ">=1.0.0 <2.0.0-0");
+/// ```
 #[derive(Debug, Clone)]
 pub struct Range {
     set: Vec<ComparatorSet>,
@@ -117,6 +131,17 @@ pub struct Range {
 impl Range {
     /// Parse a range string.
     ///
+    /// The parsed range is displayed in canonical comparator form.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use js_semver::Range;
+    ///
+    /// assert_eq!(Range::parse("^1.2.3").unwrap().to_string(), ">=1.2.3 <2.0.0-0");
+    /// assert_eq!(Range::parse(">=2.0.0").unwrap().to_string(), ">=2.0.0");
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns [`SemverError`] if `s` is not a valid semver range string.
@@ -124,11 +149,26 @@ impl Range {
         parse_range(s)
     }
 
-    /// Returns `true` if `v` satisfies this range (any comparator set matches).
+    /// Returns `true` if the given [`Version`] satisfies this range.
+    ///
+    /// This follows `node-semver`'s prerelease restriction rule: a prerelease
+    /// version only matches when the range contains a comparator with the same
+    /// `major.minor.patch` tuple and an explicit prerelease.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use js_semver::{Range, Version};
+    ///
+    /// let range = Range::parse("^1.2.3").unwrap();
+    ///
+    /// assert!(range.satisfies(&Version::parse("1.5.0").unwrap()));
+    /// assert!(!range.satisfies(&Version::parse("2.0.0").unwrap()));
+    /// ```
     #[must_use]
-    pub fn satisfies(&self, v: &Version) -> bool {
+    pub fn satisfies(&self, version: &Version) -> bool {
         for comparator_set in &self.set {
-            if comparator_set.test(v) {
+            if comparator_set.test(version) {
                 return true;
             }
         }
