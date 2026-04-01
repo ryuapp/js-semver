@@ -49,6 +49,8 @@ jobs:
         run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
       - name: Clippy (serde only)
         run: cargo clippy --workspace --all-targets --no-default-features --features serde -- -D warnings
+      - name: Check benches
+        run: cargo check --benches
 
   coverage:
     runs-on: ubuntu-latest
