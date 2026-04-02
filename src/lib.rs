@@ -17,11 +17,11 @@
 //!   </a>
 //! </p>
 //!
-//! A parser and evaluator for semantic versioning in JavaScript, including Node.js and Deno.
+//! A parser and evaluator for npm's flavor of Semantic Versioning.
 //!
-//! This crate is designed for the JavaScript ecosystem. It maintains high
-//! compatibility with the behavior of [node-semver](https://github.com/npm/node-semver)
-//! (the one npm uses) and has zero dependencies by default.
+//! This crate is a Rust implementation of [node-semver](https://github.com/npm/node-semver) (the one npm uses).
+//! It maintains high compatibility and performance, and has zero dependencies by default.
+//!
 //!
 //! # Examples
 //!

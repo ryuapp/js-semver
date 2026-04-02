@@ -3,10 +3,10 @@ name = "js-semver"
 version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Parser and evaluator for semantic versioning in JavaScript, including Node.js and Deno"
+description = "Parser and evaluator for npm's flavor of Semantic Versioning"
 license = "MIT-0"
 repository = "https://github.com/ryuapp/js-semver"
-keywords = ["semver", "nodejs", "deno"]
+keywords = ["semver", "nodejs", "npm"]
 categories = ["no-std"]
 include = [
     "src/**/*",

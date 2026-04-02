@@ -5,9 +5,10 @@
 [![github repo](https://img.shields.io/badge/GitHub-ryuapp/js--semver-171717?labelColor=171717&color=39b54a)](https://github.com/ryuapp/js-semver)
 [![codecov](https://codecov.io/gh/ryuapp/js-semver/graph/badge.svg?token=P7NMEB4IP7)](https://codecov.io/gh/ryuapp/js-semver)
 
-A parser and evaluator for semantic versioning in JavaScript, including Node.js and Deno.
+A parser and evaluator for npm's flavor of Semantic Versioning.
 
-This crate is designed for the JavaScript ecosystem. It maintains high compatibility with the behavior of [node-semver](https://github.com/npm/node-semver) (the one npm uses) and has zero dependencies by default.
+This crate is a Rust implementation of [node-semver](https://github.com/npm/node-semver) (the one npm uses).
+It maintains high compatibility and performance, and has zero dependencies by default.
 
 ## Example
 
