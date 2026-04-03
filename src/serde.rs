@@ -1,6 +1,3 @@
-#[cfg(not(feature = "std"))]
-use alloc::string::ToString as _;
-
 use crate::range::Range;
 use crate::version::Version;
 
@@ -19,7 +16,7 @@ impl<'de> serde::Deserialize<'de> for Version {
 
 impl serde::Serialize for Range {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
+        serializer.collect_str(self)
     }
 }
 
@@ -32,6 +29,9 @@ impl<'de> serde::Deserialize<'de> for Range {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "std"))]
+    use alloc::string::ToString;
+
     use super::*;
 
     #[test]
