@@ -1,3 +1,6 @@
+#[cfg(not(feature = "std"))]
+use alloc::string::{String, ToString as _};
+
 use core::fmt;
 
 /// Error returned when a version or range string cannot be parsed.
