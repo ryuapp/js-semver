@@ -29,6 +29,9 @@ impl<'de> serde::Deserialize<'de> for Range {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "std"))]
+    use alloc::string::ToString;
+
     use super::*;
 
     #[test]
