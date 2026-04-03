@@ -54,13 +54,12 @@ extern crate alloc;
 // Constants
 // --------------------------------------------------------------------------
 
-/// JavaScript's `Number.MAX_SAFE_INTEGER` (2^53 − 1).
-pub(crate) const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 /// Maximum accepted length for any version or range string.
 pub(crate) const MAX_LENGTH: usize = 256;
 
 mod error;
 mod identifier;
+mod number;
 mod range;
 #[cfg(feature = "serde")]
 mod serde;

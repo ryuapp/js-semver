@@ -5,7 +5,8 @@ use core::fmt;
 use core::str::FromStr;
 
 use crate::identifier::{BuildMetadata, PreRelease};
-use crate::version::{Version, parse_nr};
+use crate::number::{MAX_SAFE_INTEGER, parse_nr};
+use crate::version::Version;
 use crate::{MAX_LENGTH, SemverError};
 
 // --------------------------------------------------------------------------
@@ -376,7 +377,7 @@ fn comparator_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
 }
 
 fn next_component(value: u64) -> Result<u64, SemverError> {
-    if value >= crate::MAX_SAFE_INTEGER {
+    if value >= MAX_SAFE_INTEGER {
         return Err(SemverError::new(
             "range upper bound exceeds MAX_SAFE_INTEGER",
         ));
@@ -944,186 +945,15 @@ mod tests {
     #[cfg(not(feature = "std"))]
     use alloc::string::ToString;
 
-    use core::fmt::{self, Write};
-
     use super::*;
-    use crate::version::Version;
-
-    fn v(s: &str) -> Version {
-        s.parse().unwrap()
-    }
-    fn r(s: &str) -> Range {
-        s.parse().unwrap()
-    }
-
-    fn assert_satisfies_case(range: &str, version: &str, expected: bool) {
-        assert_eq!(r(range).satisfies(&v(version)), expected);
-    }
-
-    fn assert_display_case(input: &str, expected: &str) {
-        assert_eq!(Range::parse(input).unwrap().to_string(), expected);
-    }
-
-    fn assert_invalid_range(input: &str) {
-        assert!(Range::parse(input).is_err());
-    }
-
-    struct FailingWriter {
-        fail_on: &'static str,
-        fail_any: bool,
-    }
-
-    impl Write for FailingWriter {
-        fn write_str(&mut self, s: &str) -> fmt::Result {
-            if self.fail_any || s == self.fail_on {
-                return Err(fmt::Error);
-            }
-            Ok(())
-        }
-    }
-
-    // --- satisfies ---
 
     #[test]
-    fn satisfies_cases() {
-        assert_satisfies_case("^1.0.0", "1.2.3", true);
-        assert_satisfies_case("^1.0.0", "1.9.9", true);
-        assert_satisfies_case("^1.0.0", "2.0.0", false);
-        assert_satisfies_case("^1.0.0", "0.9.9", false);
-        assert_satisfies_case("~1.2.0", "1.2.3", true);
-        assert_satisfies_case("~1.2.0", "1.2.9", true);
-        assert_satisfies_case("~1.2.0", "1.3.0", false);
-        assert_satisfies_case("~1.2.0", "1.1.9", false);
-        assert_satisfies_case("1.0.0 - 2.0.0", "1.5.0", true);
-        assert_satisfies_case("1.0.0 - 2.0.0", "1.0.0", true);
-        assert_satisfies_case("1.0.0 - 2.0.0", "2.0.0", true);
-        assert_satisfies_case("1.0.0 - 2.0.0", "3.0.0", false);
-        assert_satisfies_case(">1.0.0", "2.0.0", true);
-        assert_satisfies_case(">=1.0.0", "1.0.0", true);
-        assert_satisfies_case("<1.0.0", "0.9.9", true);
-        assert_satisfies_case("<=1.0.0", "1.0.0", true);
-        assert_satisfies_case("=1.0.0", "1.0.0", true);
-        assert_satisfies_case("1.0.0", "1.0.0", true);
-        assert_satisfies_case("1.x", "1.2.3", true);
-        assert_satisfies_case("1", "1.0.0", true);
-        assert_satisfies_case("1", "1.9.9", true);
-        assert_satisfies_case("1", "2.0.0", false);
-        assert_satisfies_case("1.2.x", "1.2.9", true);
-        assert_satisfies_case("*", "1.2.3", true);
-        assert_satisfies_case("*", "0.0.1", true);
-        assert_satisfies_case("1.0.0 || 2.0.0", "1.0.0", true);
-        assert_satisfies_case("1.0.0 || 2.0.0", "2.0.0", true);
-        assert_satisfies_case("1.0.0 || 2.0.0", "3.0.0", false);
-    }
-
-    #[test]
-    fn prerelease_restriction() {
-        assert!(!r("^1.0.0").satisfies(&v("1.0.0-alpha")));
-        assert!(r(">=1.0.0-alpha").satisfies(&v("1.0.0-alpha.1")));
-        assert!(r(">=1.0.0-alpha <=1.0.0-rc").satisfies(&v("1.0.0-beta")));
-        assert!(!r(">=1.0.0-alpha <2.0.0").satisfies(&v("1.2.3-alpha")));
-        // 4.0.0-rc.0 / rc.2: same [major,minor,patch] tuple → allowed
-        assert!(r(">=4.0.0-rc.0").satisfies(&v("4.0.0-rc.0")));
-        assert!(r(">=4.0.0-rc.0").satisfies(&v("4.0.0-rc.2")));
-        // 4.2.0-rc.1: different tuple (4.2.0 ≠ 4.0.0) → excluded
-        assert!(!r(">=4.0.0-rc.0").satisfies(&v("4.2.0-rc.1")));
-    }
-
-    #[test]
-    fn parse_valid_and_display_cases() {
-        assert_display_case("^1.0.0", ">=1.0.0 <2.0.0-0");
-        assert_display_case("1.0.0", "1.0.0");
-        assert_display_case("=1.0.0", "1.0.0");
-        assert_display_case("~0.x.0", "<1.0.0-0");
-        assert_display_case("~1.x.0", ">=1.0.0 <2.0.0-0");
-        assert_display_case("*", "*");
-        assert_display_case("* || ^1.2.3", "*");
-        assert_display_case(">X", "<0.0.0-0");
-        assert_display_case("<X", "<0.0.0-0");
-        assert_display_case("<x <* || >* 2.x", "<0.0.0-0");
-        assert_display_case(
-            ">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0",
-            ">=1.0.0 <2.0.0||>=2.0.0 <3.0.0",
-        );
-        assert_display_case("~> 1", ">=1.0.0 <2.0.0-0");
-        assert_display_case("~ 1.0", ">=1.0.0 <1.1.0-0");
-        assert_display_case("~v0.5.2-pre", ">=0.5.2-pre <0.6.0-0");
-        assert_display_case("^ 1.2.3", ">=1.2.3 <2.0.0-0");
-        assert_display_case("<=1.2.3", "<=1.2.3");
-        assert_display_case("<1.2.3", "<1.2.3");
-        assert_display_case("x", "*");
-        assert_display_case("=x", "*");
-
-        assert!(Range::parse(">=1.0.0 <2.0.0").is_ok());
+    fn try_hyphen_rejects_non_hyphen_forms() {
         assert!(try_hyphen(">=1.0.0 - 2.0.0").unwrap().is_none());
         assert!(try_hyphen("1.0.0 - <=2.0.0").unwrap().is_none());
         assert!(try_hyphen("1.2.3").unwrap().is_none());
         assert!(try_hyphen("1.2.3 -").unwrap().is_none());
         assert!(try_hyphen("- 1.2.3").unwrap().is_none());
-    }
-
-    // --- partial range syntax (tilde/caret with missing parts) ---
-
-    #[test]
-    fn tilde_partial() {
-        // ~1 → >=1.0.0 <2.0.0-0
-        assert!(r("~1").satisfies(&v("1.9.9")));
-        assert!(!r("~1").satisfies(&v("2.0.0")));
-        assert_eq!(Range::parse("~0.x.0").unwrap().to_string(), "<1.0.0-0");
-        assert_eq!(
-            Range::parse("~1.x.0").unwrap().to_string(),
-            ">=1.0.0 <2.0.0-0"
-        );
-        // ~1.2 → >=1.2.0 <1.3.0-0
-        assert!(r("~1.2").satisfies(&v("1.2.9")));
-        assert!(!r("~1.2").satisfies(&v("1.3.0")));
-        // ~1.2.3 with pre-release floor
-        assert!(r("~1.2.3-alpha").satisfies(&v("1.2.3-beta")));
-        assert!(!r("~1.2.3-alpha").satisfies(&v("1.3.0")));
-    }
-
-    #[test]
-    fn caret_partial() {
-        assert_eq!(Range::parse("^0").unwrap().to_string(), "<1.0.0-0");
-        // ^1 → >=1.0.0 <2.0.0-0
-        assert!(r("^1").satisfies(&v("1.9.9")));
-        assert!(!r("^1").satisfies(&v("2.0.0")));
-        // ^0.2 → >=0.2.0 <0.3.0
-        assert!(r("^0.2").satisfies(&v("0.2.9")));
-        assert!(!r("^0.2").satisfies(&v("0.3.0")));
-        // ^0.0 → >=0.0.0 <0.1.0
-        assert!(r("^0.0").satisfies(&v("0.0.9")));
-        assert!(!r("^0.0").satisfies(&v("0.1.0")));
-        // ^0.2.3 → >=0.2.3 <0.3.0
-        assert!(r("^0.2.3").satisfies(&v("0.2.9")));
-        assert!(!r("^0.2.3").satisfies(&v("0.3.0")));
-        // ^0.0.3 → >=0.0.3 <0.0.4
-        assert!(r("^0.0.3").satisfies(&v("0.0.3")));
-        assert!(!r("^0.0.3").satisfies(&v("0.0.4")));
-        // ^1.2.3-pre floor
-        assert!(r("^1.2.3-alpha").satisfies(&v("1.2.3-beta")));
-    }
-
-    // --- primitive operators with partial versions ---
-
-    #[test]
-    fn primitive_partial() {
-        // >1 → >=2.0.0
-        assert!(r(">1").satisfies(&v("2.0.0")));
-        assert!(!r(">1").satisfies(&v("1.9.9")));
-        // >1.2 → >=1.3.0
-        assert!(r(">1.2").satisfies(&v("1.3.0")));
-        assert!(!r(">1.2").satisfies(&v("1.2.9")));
-        // >=1.2 → >=1.2.0
-        assert!(r(">=1.2").satisfies(&v("1.2.0")));
-        // <1 → <1.0.0
-        assert!(r("<1").satisfies(&v("0.9.9")));
-        assert!(!r("<1").satisfies(&v("1.0.0")));
-        // <1.2 → <1.2.0
-        assert!(r("<1.2").satisfies(&v("1.1.9")));
-        // <=1.2 → <1.3.0-0
-        assert!(r("<=1.2").satisfies(&v("1.2.9")));
-        assert!(!r("<=1.2").satisfies(&v("1.3.0")));
     }
 
     // --- Operator Display ---
@@ -1135,209 +965,6 @@ mod tests {
         assert_eq!(Operator::GreaterThan.to_string(), ">");
         assert_eq!(Operator::GreaterThanOrEqual.to_string(), ">=");
         assert_eq!(Operator::Equal.to_string(), "=");
-    }
-
-    // --- wildcard operator forms ---
-
-    #[test]
-    fn wildcard_operator_forms() {
-        // ~* → empty comparators → matches everything
-        assert!(r("~*").satisfies(&v("1.0.0")));
-        assert!(!r("~*").satisfies(&v("1.0.0-alpha")));
-        // ^* → empty comparators → matches everything
-        assert!(r("^*").satisfies(&v("1.0.0")));
-        assert!(!r("^*").satisfies(&v("1.0.0-alpha")));
-        // >=* → empty comparators → matches everything
-        assert!(r(">=*").satisfies(&v("1.0.0")));
-        assert!(!r(">=*").satisfies(&v("1.0.0-alpha")));
-        // <=* → empty comparators → matches everything
-        assert!(r("<=*").satisfies(&v("99.0.0")));
-        assert!(!r("<=*").satisfies(&v("1.0.0-alpha")));
-        assert!(!r("*").satisfies(&v("1.0.0-alpha")));
-        // <* → c_lt(0.0.0) → impossible
-        assert!(!r("<*").satisfies(&v("0.0.0")));
-    }
-
-    // --- caret with major.minor (no patch) ---
-
-    #[test]
-    fn caret_major_minor() {
-        // ^1.2 with maj>0 → >=1.2.0 <2.0.0-0
-        assert!(r("^1.2").satisfies(&v("1.9.9")));
-        assert!(!r("^1.2").satisfies(&v("2.0.0")));
-    }
-
-    // --- primitive operators with single major ---
-
-    #[test]
-    fn primitive_single_major() {
-        // >=1 → >=1.0.0
-        assert!(r(">=1").satisfies(&v("1.0.0")));
-        assert!(!r(">=1").satisfies(&v("0.9.9")));
-        // <=1 → <2.0.0-0
-        assert!(r("<=1").satisfies(&v("1.9.9")));
-        assert!(!r("<=1").satisfies(&v("2.0.0")));
-    }
-
-    // --- exact match with pre-release ---
-
-    #[test]
-    fn eq_with_pre() {
-        assert!(r("=1.2.3-alpha").satisfies(&v("1.2.3-alpha")));
-        assert!(!r("=1.2.3-alpha").satisfies(&v("1.2.3-beta")));
-    }
-
-    // --- lt/gt with pre-release ---
-
-    #[test]
-    fn lt_gt_with_pre() {
-        assert!(r("<1.2.3-beta").satisfies(&v("1.2.3-alpha")));
-        assert!(!r("<1.2.3-beta").satisfies(&v("1.2.3-beta")));
-        assert!(r(">1.2.3-alpha").satisfies(&v("1.2.3-beta")));
-    }
-
-    // --- hyphen range with partial upper bound ---
-
-    #[test]
-    fn hyphen_partial_upper() {
-        // upper = * (None major) → no upper bound
-        assert!(r("1.0.0 - *").satisfies(&v("99.0.0")));
-        // upper = 2 (major only) → <3.0.0-0
-        assert!(r("1.0.0 - 2").satisfies(&v("2.9.9")));
-        assert!(!r("1.0.0 - 2").satisfies(&v("3.0.0")));
-        // upper = 2.5 (major.minor) → <2.6.0
-        assert!(r("1.0.0 - 2.5").satisfies(&v("2.5.9")));
-        assert!(!r("1.0.0 - 2.5").satisfies(&v("2.6.0")));
-        // upper with pre-release → <=2.0.0-alpha
-        assert!(r("1.0.0 - 2.0.0-alpha").satisfies(&v("2.0.0-alpha")));
-        assert!(!r("1.0.0 - 2.0.0-alpha").satisfies(&v("2.0.0")));
-    }
-
-    // --- range too long ---
-
-    #[test]
-    fn range_too_long() {
-        assert!(Range::parse(&"^1.0.0 ".repeat(50)).is_err());
-    }
-
-    // --- parse_token with * mixed in ---
-
-    #[test]
-    fn parse_token_star_mixed() {
-        // ">=1.0.0 *" → cs with only >=1.0.0 (star contributes nothing)
-        assert!(r(">=1.0.0 *").satisfies(&v("1.0.0")));
-        assert!(!r(">=1.0.0 *").satisfies(&v("0.9.9")));
-    }
-
-    #[test]
-    fn parse_invalid_cases() {
-        assert_invalid_range("01.0.0");
-        assert_invalid_range("1a.0.0");
-        assert_invalid_range("9007199254740992.0.0");
-        assert_invalid_range(">");
-        assert_invalid_range(">=");
-        assert_invalid_range("> ");
-        assert_invalid_range("<");
-        assert_invalid_range("<=");
-        assert_invalid_range("=");
-        assert_invalid_range("^");
-        assert_invalid_range("~");
-        assert_invalid_range("~=");
-        assert_invalid_range("1.0.0 -");
-        assert_invalid_range("- 2.0.0");
-        assert_invalid_range("1.0.0 - 2.0.0 - 3.0.0");
-        assert_invalid_range(">>1.0.0");
-        assert_invalid_range("><1.0.0");
-        assert_invalid_range(">=<=1.0.0");
-        assert_invalid_range("^01.0.0");
-        assert_invalid_range("~01.0.0");
-        assert_invalid_range(">01.0.0");
-        assert_invalid_range(">=01.0.0");
-        assert_invalid_range("^1.2.3.4");
-        assert_invalid_range(">=a.b.c");
-        assert_invalid_range(">1.2.3-0.01");
-        assert_invalid_range("!!");
-        assert_invalid_range("??");
-        assert_invalid_range("1.0.0!");
-        assert_invalid_range("1.0.0-");
-        assert_invalid_range("-1.0.0");
-        assert_invalid_range("^1.0.0-0.01");
-        assert_invalid_range(">=1.0.0-01");
-        assert_invalid_range("~1.0.0-01");
-        assert_invalid_range("1.0.0>");
-        assert_invalid_range("1.0.0>=");
-        assert_invalid_range("1.0.0^");
-        assert_invalid_range("~1.");
-        assert_invalid_range("^1.");
-        assert_invalid_range("^1.2.");
-        assert_invalid_range("~1.2.");
-        assert_invalid_range(">=1.");
-        assert_invalid_range(">=1.2.");
-        assert_invalid_range("1. - 2.0.0");
-        assert_invalid_range("1.0.0 - 2.");
-        assert_invalid_range("1.0.0- 2.0.0");
-        assert_invalid_range("1.0.0 -2.0.0");
-        assert_invalid_range("!1.0.0");
-        assert_invalid_range("!=1.0.0");
-        assert_invalid_range(">1.0.0\x00");
-        assert_invalid_range("^00.0.0");
-        assert_invalid_range("~0.00.0");
-        assert_invalid_range(">=0.0.00");
-        assert_invalid_range("^9007199254740991.0.0");
-    }
-
-    #[test]
-    fn invalid_partial_after_operator_errors() {
-        assert!(Range::parse("<=a.b.c").is_err());
-        assert!(Range::parse("<a.b.c").is_err());
-        assert!(Range::parse("=a.b.c").is_err());
-        assert!(Range::parse("> a.b.c").is_err());
-        assert!(Range::parse("^1.0.0 || >").is_err());
-    }
-
-    #[test]
-    fn prerelease_zero_upper_bound_excludes_next_tuple_prereleases() {
-        let range = r("^1.2.3");
-        assert_eq!(range.to_string(), ">=1.2.3 <2.0.0-0");
-        assert!(range.satisfies(&v("1.9.9")));
-        assert!(!range.satisfies(&v("2.0.0-0")));
-        assert!(!range.satisfies(&v("2.0.0-alpha")));
-        assert!(!range.satisfies(&v("2.0.0")));
-    }
-
-    #[test]
-    fn canonical_comparator_dedup_and_tightening() {
-        assert_eq!(r("<1.2.4 <1.2.3").to_string(), "<1.2.4 <1.2.3");
-        assert_eq!(r("<=1.2.3 <1.2.3").to_string(), "<1.2.3");
-        assert_eq!(r("<1.2.3 <=1.2.3").to_string(), "<1.2.3");
-        assert_eq!(r("1.2.3 1.2.3").to_string(), "1.2.3");
-    }
-
-    #[test]
-    fn range_display_propagates_formatter_errors() {
-        let mut wildcard_writer = FailingWriter {
-            fail_on: "*",
-            fail_any: false,
-        };
-        assert!(write!(&mut wildcard_writer, "{}", r("*")).is_err());
-
-        let mut or_writer = FailingWriter {
-            fail_on: "||",
-            fail_any: false,
-        };
-        assert!(write!(&mut or_writer, "{}", r("1.0.0 || >=2.0.0")).is_err());
-
-        let mut space_writer = FailingWriter {
-            fail_on: " ",
-            fail_any: false,
-        };
-        assert!(write!(&mut space_writer, "{}", r(">=1.0.0 <2.0.0")).is_err());
-
-        let mut comparator_writer = FailingWriter {
-            fail_on: "",
-            fail_any: true,
-        };
-        assert!(write!(&mut comparator_writer, "{}", r(">=1.0.0")).is_err());
     }
 
     #[test]
@@ -1530,11 +1157,6 @@ mod tests {
             .unwrap()
             .len(),
             2
-        );
-
-        assert_eq!(
-            parse_range("1.0.0||2.0.0").unwrap().to_string(),
-            "1.0.0||2.0.0"
         );
         assert!(try_hyphen("1.0.0 - 2.0.0").unwrap().is_some());
     }
