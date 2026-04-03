@@ -19,7 +19,7 @@ impl<'de> serde::Deserialize<'de> for Version {
 
 impl serde::Serialize for Range {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_string())
+        serializer.collect_str(self)
     }
 }
 
