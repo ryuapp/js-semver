@@ -379,6 +379,7 @@ mod tests {
     #[test]
     fn prerelease_public_api() {
         assert!(PreRelease::default().is_empty());
+        assert!(PreRelease::new("").is_err());
         assert_eq!(PreRelease::new("alpha.1").unwrap().to_string(), "alpha.1");
         assert_eq!(PreRelease::new("beta").unwrap().to_string(), "beta");
         assert_eq!("rc.1".parse::<PreRelease>().unwrap().to_string(), "rc.1");
