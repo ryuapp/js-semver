@@ -1,9 +1,10 @@
 #[cfg(not(feature = "std"))]
-use alloc::{format, vec, vec::Vec};
+use alloc::{vec, vec::Vec};
 
 use core::fmt;
 use core::str::FromStr;
 
+use crate::error::SemverErrorKind;
 use crate::identifier::{BuildMetadata, PreRelease};
 use crate::number::{MAX_SAFE_INTEGER, parse_nr};
 use crate::version::Version;
@@ -15,7 +16,7 @@ use crate::{MAX_LENGTH, SemverError};
 
 /// Comparison operator used in a version comparator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Operator {
+pub(crate) enum Operator {
     /// `<` — less than.
     LessThan,
     /// `<=` — less than or equal to.
@@ -251,10 +252,10 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     let pre_part = pre_start.map(|start| &s[start..core_end]);
 
     if version_core.is_empty() && pre_part.is_some() {
-        return Err(SemverError::new(format!("invalid version: {s}")));
+        return Err(SemverErrorKind::MissingVersionSegment.into());
     }
     if bytes.get(version_end.wrapping_sub(1)) == Some(&b'.') {
-        return Err(SemverError::new(format!("trailing dot in: {s}")));
+        return Err(SemverErrorKind::TrailingDot.into());
     }
 
     let (dot1, dot2) = find_component_dots(bytes, version_end, s)?;
@@ -276,7 +277,7 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     let pre_release = if patch.is_some() {
         match pre_part {
             Some(p) if !p.is_empty() => PreRelease::new(p)?,
-            Some(_) => return Err(SemverError::new(format!("empty pre-release in: {s}"))),
+            Some(_) => return Err(SemverErrorKind::Empty.into()),
             None => PreRelease::default(),
         }
     } else {
@@ -309,7 +310,7 @@ fn release_version(major: u64, minor: u64, patch: u64) -> Version {
 fn find_component_dots(
     bytes: &[u8],
     version_end: usize,
-    raw: &str,
+    _raw: &str,
 ) -> Result<(Option<usize>, Option<usize>), SemverError> {
     let mut first = None;
     let mut second = None;
@@ -321,9 +322,7 @@ fn find_component_dots(
             } else if second.is_none() {
                 second = Some(pos);
             } else {
-                return Err(SemverError::new(format!(
-                    "too many version components: {raw}"
-                )));
+                return Err(SemverErrorKind::UnexpectedDot.into());
             }
         }
         pos += 1;
@@ -378,9 +377,7 @@ fn comparator_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
 
 fn next_component(value: u64) -> Result<u64, SemverError> {
     if value >= MAX_SAFE_INTEGER {
-        return Err(SemverError::new(
-            "range upper bound exceeds MAX_SAFE_INTEGER",
-        ));
+        return Err(SemverErrorKind::MaxSafeIntegerExceeded.into());
     }
     Ok(value + 1)
 }
@@ -653,7 +650,7 @@ fn expand_hyphen(a: Partial, b: Partial) -> Result<Vec<Comparator>, SemverError>
 fn parse_range(s: &str) -> Result<Range, SemverError> {
     let s = s.trim();
     if s.len() > MAX_LENGTH {
-        return Err(SemverError::new("range string too long"));
+        return Err(SemverErrorKind::MaxLengthExceeded.into());
     }
 
     let bytes = s.as_bytes();
@@ -824,29 +821,25 @@ fn parse_token_into(all: &mut Vec<Comparator>, s: &str) -> Result<(), SemverErro
         return Ok(());
     }
 
-    if s == "-" {
-        return Err(SemverError::new("invalid token: -"));
-    }
-
     if let Some(rest) = s.strip_prefix('~') {
         let rest = rest.trim_start_matches(['=', '>']); // ~= and ~> are aliases for ~
         let rest = rest.trim();
         if rest.is_empty() {
-            return Err(SemverError::new("missing version after ~"));
+            return Err(SemverErrorKind::MissingVersionAfterOperator("~").into());
         }
         return expand_tilde_into(all, parse_partial(rest)?);
     }
     if let Some(rest) = s.strip_prefix('^') {
         let rest = rest.trim();
         if rest.is_empty() {
-            return Err(SemverError::new("missing version after ^"));
+            return Err(SemverErrorKind::MissingVersionAfterOperator("^").into());
         }
         return expand_caret_into(all, parse_partial(rest)?);
     }
     if let Some(rest) = s.strip_prefix(">=") {
         let rest = rest.trim();
         if rest.is_empty() {
-            return Err(SemverError::new("missing version after >="));
+            return Err(SemverErrorKind::MissingVersionAfterOperator(">=").into());
         }
         return expand_primitive_into(
             all,
@@ -857,28 +850,28 @@ fn parse_token_into(all: &mut Vec<Comparator>, s: &str) -> Result<(), SemverErro
     if let Some(rest) = s.strip_prefix("<=") {
         let rest = rest.trim();
         if rest.is_empty() {
-            return Err(SemverError::new("missing version after <="));
+            return Err(SemverErrorKind::MissingVersionAfterOperator("<=").into());
         }
         return expand_primitive_into(all, Some(Operator::LessThanOrEqual), parse_partial(rest)?);
     }
     if let Some(rest) = s.strip_prefix('>') {
         let rest = rest.trim();
         if rest.is_empty() {
-            return Err(SemverError::new("missing version after >"));
+            return Err(SemverErrorKind::MissingVersionAfterOperator(">").into());
         }
         return expand_primitive_into(all, Some(Operator::GreaterThan), parse_partial(rest)?);
     }
     if let Some(rest) = s.strip_prefix('<') {
         let rest = rest.trim();
         if rest.is_empty() {
-            return Err(SemverError::new("missing version after <"));
+            return Err(SemverErrorKind::MissingVersionAfterOperator("<").into());
         }
         return expand_primitive_into(all, Some(Operator::LessThan), parse_partial(rest)?);
     }
     if let Some(rest) = s.strip_prefix('=') {
         let rest = rest.trim();
         if rest.is_empty() {
-            return Err(SemverError::new("missing version after ="));
+            return Err(SemverErrorKind::MissingVersionAfterOperator("=").into());
         }
         return expand_primitive_into(all, Some(Operator::Equal), parse_partial(rest)?);
     }

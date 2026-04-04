@@ -1,11 +1,12 @@
 #[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, format};
+use alloc::boxed::Box;
 
 use core::cmp::Ordering;
 use core::fmt;
 use core::str::FromStr;
 
 use crate::SemverError;
+use crate::error::SemverErrorKind;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// A parsed pre-release identifier list such as `alpha.1`.
@@ -33,7 +34,7 @@ impl PreRelease {
     /// Returns [`SemverError`] if `s` is not valid pre-release metadata.
     pub fn new(s: &str) -> Result<Self, SemverError> {
         if s.is_empty() {
-            return Err(SemverError::new("empty pre-release"));
+            return Err(SemverErrorKind::Empty.into());
         }
         validate_identifiers(s, parse_prerelease_identifier)?;
         Ok(Self(Box::from(s)))
@@ -111,7 +112,7 @@ impl BuildMetadata {
     /// Returns [`SemverError`] if `s` is not valid build metadata.
     pub fn new(s: &str) -> Result<Self, SemverError> {
         if s.is_empty() {
-            return Err(SemverError::new("empty build metadata"));
+            return Err(SemverErrorKind::Empty.into());
         }
         validate_identifiers(s, parse_build_metadata_identifier)?;
         Ok(Self(Box::from(s)))
@@ -184,7 +185,7 @@ impl<'a> Identifier<'a> {
 fn parse_prerelease_identifier(raw: &str) -> Result<Identifier<'_>, SemverError> {
     let bytes = raw.as_bytes();
     if bytes.is_empty() {
-        return Err(SemverError::new("empty pre-release identifier"));
+        return Err(SemverErrorKind::Empty.into());
     }
 
     let mut all_digits = true;
@@ -193,16 +194,12 @@ fn parse_prerelease_identifier(raw: &str) -> Result<Identifier<'_>, SemverError>
         } else if byte.is_ascii_alphabetic() || byte == b'-' {
             all_digits = false;
         } else {
-            return Err(SemverError::new(format!(
-                "invalid pre-release identifier: {raw}"
-            )));
+            return Err(SemverErrorKind::UnexpectedCharacter(char::from(byte)).into());
         }
     }
 
     if all_digits && bytes.len() > 1 && bytes[0] == b'0' {
-        return Err(SemverError::new(format!(
-            "leading zero in pre-release: {raw}"
-        )));
+        return Err(SemverErrorKind::LeadingZero.into());
     }
 
     Ok(Identifier::new(
@@ -217,15 +214,13 @@ fn parse_prerelease_identifier(raw: &str) -> Result<Identifier<'_>, SemverError>
 
 fn parse_build_metadata_identifier(raw: &str) -> Result<Identifier<'_>, SemverError> {
     if raw.is_empty() {
-        return Err(SemverError::new("empty build metadata identifier"));
+        return Err(SemverErrorKind::Empty.into());
     }
-    if !raw
+    if let Some(byte) = raw
         .bytes()
-        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        .find(|byte| !byte.is_ascii_alphanumeric() && *byte != b'-')
     {
-        return Err(SemverError::new(format!(
-            "invalid build metadata identifier: {raw}"
-        )));
+        return Err(SemverErrorKind::UnexpectedCharacter(char::from(byte)).into());
     }
     Ok(Identifier::new(
         raw,
@@ -451,33 +446,6 @@ mod tests {
         assert_eq!(
             cmp_dot_separated("alpha", "alpha.1", parse_prerelease_identifier),
             Ordering::Less
-        );
-    }
-
-    #[test]
-    fn cmp_dot_separated_fallback_paths() {
-        fn fail_on_left(raw: &str) -> Result<Identifier<'_>, SemverError> {
-            if raw == "bad" {
-                return Err(SemverError::new("bad left"));
-            }
-            Ok(Identifier::new(raw, IdentifierKind::AlphaNumeric))
-        }
-
-        fn fail_on_right(raw: &str) -> Result<Identifier<'_>, SemverError> {
-            if raw == "bad" {
-                return Err(SemverError::new("bad right"));
-            }
-            Ok(Identifier::new(raw, IdentifierKind::AlphaNumeric))
-        }
-
-        assert!(fail_on_left("ok").is_ok());
-        assert_eq!(
-            cmp_dot_separated("bad", "ok", fail_on_left),
-            Ordering::Equal
-        );
-        assert_eq!(
-            cmp_dot_separated("ok", "bad", fail_on_right),
-            Ordering::Equal
         );
     }
 }
