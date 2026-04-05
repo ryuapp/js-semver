@@ -185,7 +185,7 @@ impl<'a> Identifier<'a> {
 fn parse_prerelease_identifier(raw: &str) -> Result<Identifier<'_>, SemverError> {
     let bytes = raw.as_bytes();
     if bytes.is_empty() {
-        return Err(SemverErrorKind::Empty.into());
+        return Err(SemverErrorKind::EmptySegment.into());
     }
 
     let mut all_digits = true;
@@ -214,7 +214,7 @@ fn parse_prerelease_identifier(raw: &str) -> Result<Identifier<'_>, SemverError>
 
 fn parse_build_metadata_identifier(raw: &str) -> Result<Identifier<'_>, SemverError> {
     if raw.is_empty() {
-        return Err(SemverErrorKind::Empty.into());
+        return Err(SemverErrorKind::EmptySegment.into());
     }
     if let Some(byte) = raw
         .bytes()

@@ -277,7 +277,7 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     let pre_release = if patch.is_some() {
         match pre_part {
             Some(p) if !p.is_empty() => PreRelease::new(p)?,
-            Some(_) => return Err(SemverErrorKind::Empty.into()),
+            Some(_) => return Err(SemverErrorKind::EmptySegment.into()),
             None => PreRelease::default(),
         }
     } else {

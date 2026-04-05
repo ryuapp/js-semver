@@ -163,6 +163,9 @@ impl FromStr for Version {
 
 fn parse_version(s: &str) -> Result<Version, SemverError> {
     let raw = s.trim();
+    if raw.is_empty() {
+        return Err(SemverErrorKind::Empty.into());
+    }
     if raw.len() > MAX_LENGTH {
         return Err(SemverErrorKind::MaxLengthExceeded.into());
     }
@@ -193,7 +196,7 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
         }
         let pre_str = &raw[start..pos];
         if pre_str.is_empty() {
-            return Err(SemverErrorKind::Empty.into());
+            return Err(SemverErrorKind::EmptySegment.into());
         }
         PreRelease::new(pre_str)?
     } else {

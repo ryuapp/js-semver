@@ -9,8 +9,10 @@ pub(crate) enum SemverErrorKind {
     MaxLengthExceeded,
     /// The input exceeded `MAX_SAFE_INTEGER`.
     MaxSafeIntegerExceeded,
-    /// An empty token or segment was encountered.
+    /// The entire input was empty.
     Empty,
+    /// An empty segment was encountered.
+    EmptySegment,
     /// A partial version ended with a dot.
     TrailingDot,
     /// A dot appeared in an unexpected position.
@@ -32,6 +34,7 @@ impl fmt::Display for SemverErrorKind {
             Self::MaxLengthExceeded => f.write_str("maximum length of 256 characters exceeded"),
             Self::MaxSafeIntegerExceeded => f.write_str("number exceeds MAX_SAFE_INTEGER"),
             Self::Empty => f.write_str("empty"),
+            Self::EmptySegment => f.write_str("empty segment"),
             Self::TrailingDot => f.write_str("trailing dot"),
             Self::UnexpectedDot => f.write_str("unexpected dot"),
             Self::LeadingZero => f.write_str("leading zero"),
@@ -102,6 +105,7 @@ mod tests {
                 "number exceeds MAX_SAFE_INTEGER",
             ),
             (SemverErrorKind::Empty, "empty"),
+            (SemverErrorKind::EmptySegment, "empty segment"),
             (SemverErrorKind::TrailingDot, "trailing dot"),
             (SemverErrorKind::UnexpectedDot, "unexpected dot"),
             (SemverErrorKind::LeadingZero, "leading zero"),
