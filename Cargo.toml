@@ -10,7 +10,7 @@ keywords = ["semver", "nodejs", "npm"]
 categories = ["no-std"]
 include = [
     "src/**/*",
-    "tests/**/*",
+    "benches/**/*",
     "LICENSE",
     "README.md",
 ]
