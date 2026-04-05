@@ -10,11 +10,26 @@
 )]
 
 use core::cmp::Ordering;
+use core::fmt::{self, Write as _};
 
 use js_semver::Version;
 
 fn v(s: &str) -> Version {
     s.parse().unwrap()
+}
+
+struct FailingWriter {
+    fail_on: &'static str,
+    fail_any: bool,
+}
+
+impl fmt::Write for FailingWriter {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        if self.fail_any || (!self.fail_on.is_empty() && s.contains(self.fail_on)) {
+            return Err(fmt::Error);
+        }
+        Ok(())
+    }
 }
 
 #[test]
@@ -150,6 +165,27 @@ fn release_greater_than_prerelease() {
 fn semver_error_display() {
     let err = "bad".parse::<Version>().unwrap_err();
     assert!(!err.to_string().is_empty());
+}
+
+#[test]
+fn version_display_propagates_formatter_errors() {
+    let mut core_writer = FailingWriter {
+        fail_on: "",
+        fail_any: true,
+    };
+    assert!(write!(&mut core_writer, "{}", v("1.2.3")).is_err());
+
+    let mut pre_writer = FailingWriter {
+        fail_on: "-",
+        fail_any: false,
+    };
+    assert!(write!(&mut pre_writer, "{}", v("1.2.3-alpha.1")).is_err());
+
+    let mut build_writer = FailingWriter {
+        fail_on: "+",
+        fail_any: false,
+    };
+    assert!(write!(&mut build_writer, "{}", v("1.2.3+build.1")).is_err());
 }
 
 #[test]

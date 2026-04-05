@@ -78,3 +78,48 @@ impl From<SemverErrorKind> for SemverError {
         Self { kind }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(not(feature = "std"))]
+    use alloc::string::ToString;
+
+    use super::{SemverError, SemverErrorKind};
+
+    #[test]
+    fn semver_error_kind_display_variants() {
+        let cases = [
+            (
+                SemverErrorKind::UnexpectedCharacter('x'),
+                "unexpected character: 'x'",
+            ),
+            (
+                SemverErrorKind::MaxLengthExceeded,
+                "maximum length of 256 characters exceeded",
+            ),
+            (
+                SemverErrorKind::MaxSafeIntegerExceeded,
+                "number exceeds MAX_SAFE_INTEGER",
+            ),
+            (SemverErrorKind::Empty, "empty"),
+            (SemverErrorKind::TrailingDot, "trailing dot"),
+            (SemverErrorKind::UnexpectedDot, "unexpected dot"),
+            (SemverErrorKind::LeadingZero, "leading zero"),
+            (SemverErrorKind::InvalidNumber, "invalid number"),
+            (
+                SemverErrorKind::MissingVersionSegment,
+                "missing version segment",
+            ),
+            (
+                SemverErrorKind::MissingVersionAfterOperator(">="),
+                "missing version after >=",
+            ),
+        ];
+
+        for (kind, expected) in cases {
+            assert_eq!(kind.to_string(), expected);
+            let error: SemverError = kind.into();
+            assert_eq!(error.to_string(), expected);
+        }
+    }
+}

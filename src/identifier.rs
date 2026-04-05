@@ -326,6 +326,20 @@ mod tests {
 
     use super::*;
 
+    fn fail_on_bad_left(raw: &str) -> Result<Identifier<'_>, SemverError> {
+        if raw == "bad-left" {
+            return Err(SemverErrorKind::Empty.into());
+        }
+        parse_prerelease_identifier(raw)
+    }
+
+    fn fail_on_bad_right(raw: &str) -> Result<Identifier<'_>, SemverError> {
+        if raw == "bad-right" {
+            return Err(SemverErrorKind::Empty.into());
+        }
+        parse_prerelease_identifier(raw)
+    }
+
     #[test]
     fn identifier_ordering() {
         assert_eq!(
@@ -447,5 +461,72 @@ mod tests {
             cmp_dot_separated("alpha", "alpha.1", parse_prerelease_identifier),
             Ordering::Less
         );
+        assert_eq!(
+            Ord::cmp(
+                &PreRelease::new("alpha").unwrap(),
+                &PreRelease::new("beta").unwrap()
+            ),
+            Ordering::Less
+        );
+        assert_eq!(
+            PartialOrd::partial_cmp(
+                &BuildMetadata::new("build.1").unwrap(),
+                &BuildMetadata::new("build.2").unwrap()
+            ),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            parse_build_metadata_identifier("1")
+                .unwrap()
+                .partial_cmp(&parse_build_metadata_identifier("2").unwrap()),
+            Some(Ordering::Less)
+        );
+        assert_eq!("rc.1".parse::<PreRelease>().unwrap().to_string(), "rc.1");
+        assert_eq!(
+            "meta.42".parse::<BuildMetadata>().unwrap().to_string(),
+            "meta.42"
+        );
+    }
+
+    #[test]
+    fn cmp_dot_separated_parser_failures_fallback_to_equal() {
+        assert_eq!(
+            fail_on_bad_left("alpha").unwrap(),
+            parse_prerelease_identifier("alpha").unwrap()
+        );
+        assert_eq!(
+            fail_on_bad_right("alpha").unwrap(),
+            parse_prerelease_identifier("alpha").unwrap()
+        );
+        assert_eq!(
+            cmp_dot_separated("bad-left", "alpha", fail_on_bad_left),
+            Ordering::Equal
+        );
+        assert_eq!(
+            cmp_dot_separated("alpha", "bad-right", fail_on_bad_right),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn prerelease_cmp_identifiers_covers_empty_and_equal_cases() {
+        assert_eq!(
+            PreRelease::default().cmp(&PreRelease::default()),
+            Ordering::Equal
+        );
+        assert_eq!(
+            PreRelease::default().cmp(&PreRelease::new("0").unwrap()),
+            Ordering::Less
+        );
+        assert_eq!(
+            PreRelease::new("alpha")
+                .unwrap()
+                .cmp_identifiers(&PreRelease::new("alpha").unwrap()),
+            Ordering::Equal
+        );
+        assert!(PreRelease::new("").is_err());
+        assert!(PreRelease::new("alpha!1").is_err());
+        assert!(BuildMetadata::new("").is_err());
+        assert!(BuildMetadata::new("meta!1").is_err());
     }
 }

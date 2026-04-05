@@ -4,7 +4,7 @@ use core::str::FromStr;
 
 use crate::error::SemverErrorKind;
 use crate::identifier::{BuildMetadata, PreRelease};
-use crate::number::{MAX_SAFE_INTEGER, parse_core_number_digits};
+use crate::number::{MAX_SAFE_INTEGER, parse_ascii_digits};
 use crate::{MAX_LENGTH, SemverError};
 
 // --------------------------------------------------------------------------
@@ -237,7 +237,7 @@ fn parse_nr_at(b: &[u8], pos: &mut usize) -> Result<u64, SemverError> {
     if digits.len() > 16 {
         return Err(SemverErrorKind::MaxSafeIntegerExceeded.into());
     }
-    let n = parse_core_number_digits(digits)?;
+    let n = parse_ascii_digits(digits);
     if n > MAX_SAFE_INTEGER {
         return Err(SemverErrorKind::MaxSafeIntegerExceeded.into());
     }
@@ -261,5 +261,26 @@ fn compare_core_and_prerelease(left: &Version, right: &Version) -> Ordering {
         (false, true) => Ordering::Less,
         (true, true) => Ordering::Equal,
         (false, false) => left.pre_release.cmp_identifiers(&right.pre_release),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_nr_at;
+    use crate::number::MAX_SAFE_INTEGER;
+
+    #[test]
+    fn parse_nr_at_propagates_core_number_parse_errors() {
+        let bytes = b"9007199254740992";
+        let mut pos = 0;
+        assert!(parse_nr_at(bytes, &mut pos).is_err());
+    }
+
+    #[test]
+    fn parse_nr_at_parses_max_safe_integer() {
+        let bytes = b"9007199254740991";
+        let mut pos = 0;
+        assert_eq!(parse_nr_at(bytes, &mut pos).unwrap(), MAX_SAFE_INTEGER);
+        assert_eq!(pos, bytes.len());
     }
 }

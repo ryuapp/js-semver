@@ -659,7 +659,8 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
     let mut i = 0;
     while i < bytes.len() {
         if i + 1 < bytes.len() && bytes[i] == b'|' && bytes[i + 1] == b'|' {
-            set.push(parse_comparator_set(s[start..i].trim())?);
+            let comparator_set = parse_comparator_set(s[start..i].trim())?;
+            set.push(comparator_set);
             i += 2;
             start = i;
         } else {
@@ -1152,5 +1153,233 @@ mod tests {
             2
         );
         assert!(try_hyphen("1.0.0 - 2.0.0").unwrap().is_some());
+    }
+
+    #[test]
+    fn helper_expand_error_paths() {
+        let partial = parse_partial("1.2").unwrap();
+        assert_eq!(partial.major, Some(1));
+        assert_eq!(partial.minor, Some(2));
+        assert_eq!(partial.patch, None);
+        assert!(expand_tilde(parse_partial("9007199254740991").unwrap()).is_err());
+        assert!(expand_tilde(parse_partial("1.9007199254740991").unwrap()).is_err());
+        assert!(expand_tilde(parse_partial("1.9007199254740991.0").unwrap()).is_err());
+
+        assert!(expand_caret(parse_partial("9007199254740991").unwrap()).is_err());
+        assert!(expand_caret(parse_partial("9007199254740991.1").unwrap()).is_err());
+        assert!(expand_caret(parse_partial("0.9007199254740991").unwrap()).is_err());
+        assert!(expand_caret(parse_partial("0.9007199254740991.1").unwrap()).is_err());
+        assert!(expand_caret(parse_partial("0.0.9007199254740991").unwrap()).is_err());
+        assert_eq!(
+            expand_caret(parse_partial("1.2").unwrap()).unwrap().len(),
+            2
+        );
+        assert_eq!(
+            expand_caret(parse_partial("0.2").unwrap()).unwrap().len(),
+            2
+        );
+        let mut out = Vec::new();
+        expand_caret_into(&mut out, parse_partial("0.2").unwrap()).unwrap();
+        assert_eq!(out.len(), 2);
+
+        assert!(expand_primitive(None, parse_partial("9007199254740991").unwrap()).is_err());
+        assert!(expand_primitive(None, parse_partial("1.9007199254740991").unwrap()).is_err());
+        assert!(
+            expand_primitive(
+                Some(Operator::GreaterThan),
+                parse_partial("9007199254740991").unwrap()
+            )
+            .is_err()
+        );
+        assert!(
+            expand_primitive(
+                Some(Operator::GreaterThan),
+                parse_partial("1.9007199254740991").unwrap()
+            )
+            .is_err()
+        );
+        assert!(
+            expand_primitive(
+                Some(Operator::LessThanOrEqual),
+                parse_partial("9007199254740991").unwrap()
+            )
+            .is_err()
+        );
+        assert!(
+            expand_primitive(
+                Some(Operator::LessThanOrEqual),
+                parse_partial("1.9007199254740991").unwrap()
+            )
+            .is_err()
+        );
+
+        assert!(
+            expand_hyphen(
+                parse_partial("1.0.0").unwrap(),
+                parse_partial("9007199254740991").unwrap()
+            )
+            .is_err()
+        );
+        assert!(
+            expand_hyphen(
+                parse_partial("1.0.0").unwrap(),
+                parse_partial("1.9007199254740991").unwrap()
+            )
+            .is_err()
+        );
+        assert!(parse_partial("1.bad").is_err());
+        assert_eq!(parse_range("1.0.0 || 2.0.0").unwrap().set.len(), 2);
+        assert_eq!(parse_range("1.0.0 || 2.0.0 || 3.0.0").unwrap().set.len(), 3);
+        assert!(parse_range(">= || 1.0.0").is_err());
+        assert!(parse_range("1.0.0 || >=").is_err());
+        assert_eq!(try_hyphen("1.0.0 - 2.0.0").unwrap().unwrap().len(), 2);
+        assert!(try_hyphen("1.0.0 - 9007199254740991").is_err());
+    }
+
+    #[test]
+    fn public_and_comparator_helpers_are_used_in_crate_tests() {
+        let version = Version::parse("1.2.3").unwrap();
+        let prerelease = Version::parse("1.2.3-alpha.1").unwrap();
+
+        let eq = Comparator {
+            op: Operator::Equal,
+            version: version.clone(),
+        };
+        let lt = Comparator {
+            op: Operator::LessThan,
+            version: Version::parse("2.0.0").unwrap(),
+        };
+        let set = ComparatorSet {
+            comparators: vec![eq.clone(), lt.clone()],
+        };
+        let range = Range::parse("1.2.3").unwrap();
+
+        assert!(eq.test(&version));
+        assert!(
+            Comparator {
+                op: Operator::GreaterThan,
+                version: Version::parse("1.2.2").unwrap(),
+            }
+            .test(&version)
+        );
+        assert!(
+            Comparator {
+                op: Operator::LessThanOrEqual,
+                version: version.clone(),
+            }
+            .test(&version)
+        );
+        assert_eq!(eq.to_string(), "1.2.3");
+        assert!(set.test(&version));
+        assert!(!set.test(&prerelease));
+        assert_eq!(
+            Range::parse("^1.2.3").unwrap().to_string(),
+            ">=1.2.3 <2.0.0-0"
+        );
+        assert!(range.satisfies(&version));
+        assert!(!Range::parse("2.x || 3.x").unwrap().satisfies(&version));
+        assert_eq!(
+            compare_core_and_prerelease(&version, &Version::parse("1.2.4").unwrap()),
+            core::cmp::Ordering::Less
+        );
+    }
+
+    #[test]
+    fn comparator_set_test_covers_release_and_prerelease_paths() {
+        let release = Version::parse("1.2.3").unwrap();
+        let prerelease = Version::parse("1.2.3-alpha.1").unwrap();
+        let next_release = Version::parse("1.2.4").unwrap();
+        let matching_pre = Version::parse("1.2.3-alpha.0").unwrap();
+
+        let empty = ComparatorSet {
+            comparators: Vec::new(),
+        };
+        assert!(empty.test(&release));
+        assert!(!empty.test(&prerelease));
+
+        let release_ok = ComparatorSet {
+            comparators: vec![Comparator {
+                op: Operator::Equal,
+                version: release.clone(),
+            }],
+        };
+        assert!(release_ok.test(&release));
+        assert!(!release_ok.test(&next_release));
+
+        let prerelease_without_match = ComparatorSet {
+            comparators: vec![Comparator {
+                op: Operator::GreaterThanOrEqual,
+                version: release.clone(),
+            }],
+        };
+        assert!(!prerelease_without_match.test(&prerelease));
+
+        let prerelease_passes_but_tuple_does_not_match = ComparatorSet {
+            comparators: vec![
+                Comparator {
+                    op: Operator::GreaterThan,
+                    version: Version::parse("1.0.0").unwrap(),
+                },
+                Comparator {
+                    op: Operator::LessThanOrEqual,
+                    version: Version::parse("2.0.0").unwrap(),
+                },
+            ],
+        };
+        assert!(!prerelease_passes_but_tuple_does_not_match.test(&prerelease));
+
+        let prerelease_with_match = ComparatorSet {
+            comparators: vec![Comparator {
+                op: Operator::GreaterThanOrEqual,
+                version: matching_pre,
+            }],
+        };
+        assert!(prerelease_with_match.test(&prerelease));
+    }
+
+    #[test]
+    fn compare_core_and_prerelease_covers_all_major_paths() {
+        assert_eq!(
+            compare_core_and_prerelease(
+                &Version::parse("2.0.0").unwrap(),
+                &Version::parse("1.9.9").unwrap()
+            ),
+            core::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_core_and_prerelease(
+                &Version::parse("1.3.0").unwrap(),
+                &Version::parse("1.2.9").unwrap()
+            ),
+            core::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_core_and_prerelease(
+                &Version::parse("1.2.4").unwrap(),
+                &Version::parse("1.2.3").unwrap()
+            ),
+            core::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_core_and_prerelease(
+                &Version::parse("1.2.3").unwrap(),
+                &Version::parse("1.2.3-alpha.1").unwrap()
+            ),
+            core::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            compare_core_and_prerelease(
+                &Version::parse("1.2.3-alpha.1").unwrap(),
+                &Version::parse("1.2.3-alpha.2").unwrap()
+            ),
+            core::cmp::Ordering::Less
+        );
+        assert_eq!(
+            compare_core_and_prerelease(
+                &Version::parse("1.2.3-alpha.1").unwrap(),
+                &Version::parse("1.2.3-alpha.1").unwrap()
+            ),
+            core::cmp::Ordering::Equal
+        );
     }
 }
