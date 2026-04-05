@@ -1,12 +1,10 @@
-#[cfg(not(feature = "std"))]
-use alloc::format;
-
 use core::cmp::Ordering;
 use core::fmt;
 use core::str::FromStr;
 
+use crate::error::SemverErrorKind;
 use crate::identifier::{BuildMetadata, PreRelease};
-use crate::number::{MAX_SAFE_INTEGER, parse_core_number_digits};
+use crate::number::{MAX_SAFE_INTEGER, parse_ascii_digits};
 use crate::{MAX_LENGTH, SemverError};
 
 // --------------------------------------------------------------------------
@@ -165,8 +163,11 @@ impl FromStr for Version {
 
 fn parse_version(s: &str) -> Result<Version, SemverError> {
     let raw = s.trim();
+    if raw.is_empty() {
+        return Err(SemverErrorKind::Empty.into());
+    }
     if raw.len() > MAX_LENGTH {
-        return Err(SemverError::new("version string too long"));
+        return Err(SemverErrorKind::MaxLengthExceeded.into());
     }
     let b = raw.as_bytes();
 
@@ -174,17 +175,17 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
     let mut pos = usize::from(matches!(b.first(), Some(b'v')));
 
     // Parse major.minor.patch in a single forward scan
-    let major = parse_nr_at(b, &mut pos, raw)?;
+    let major = parse_nr_at(b, &mut pos)?;
     if b.get(pos) != Some(&b'.') {
-        return Err(SemverError::new(format!("missing minor in: {raw}")));
+        return Err(SemverErrorKind::MissingVersionSegment.into());
     }
     pos += 1;
-    let minor = parse_nr_at(b, &mut pos, raw)?;
+    let minor = parse_nr_at(b, &mut pos)?;
     if b.get(pos) != Some(&b'.') {
-        return Err(SemverError::new(format!("missing patch in: {raw}")));
+        return Err(SemverErrorKind::MissingVersionSegment.into());
     }
     pos += 1;
-    let patch = parse_nr_at(b, &mut pos, raw)?;
+    let patch = parse_nr_at(b, &mut pos)?;
 
     // Optional pre-release
     let pre_release = if b.get(pos) == Some(&b'-') {
@@ -195,7 +196,7 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
         }
         let pre_str = &raw[start..pos];
         if pre_str.is_empty() {
-            return Err(SemverError::new("empty pre-release"));
+            return Err(SemverErrorKind::EmptySegment.into());
         }
         PreRelease::new(pre_str)?
     } else {
@@ -209,7 +210,8 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
     } else if pos == b.len() {
         BuildMetadata::default()
     } else {
-        return Err(SemverError::new(format!("unexpected character: {raw}")));
+        let unexpected = raw[pos..].chars().next().unwrap_or('\0');
+        return Err(SemverErrorKind::UnexpectedCharacter(unexpected).into());
     };
 
     Ok(Version {
@@ -222,30 +224,25 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
 }
 
 /// Parse a decimal integer from `b` starting at `*pos`, advancing `*pos` past the digits.
-fn parse_nr_at(b: &[u8], pos: &mut usize, ctx: &str) -> Result<u64, SemverError> {
+fn parse_nr_at(b: &[u8], pos: &mut usize) -> Result<u64, SemverError> {
     let start = *pos;
     if start >= b.len() || !b[start].is_ascii_digit() {
-        return Err(SemverError::new(format!("expected number in: {ctx}")));
+        return Err(SemverErrorKind::InvalidNumber.into());
     }
     // Leading-zero check
     if b[start] == b'0' && b.get(start + 1).is_some_and(u8::is_ascii_digit) {
-        return Err(SemverError::new(format!("leading zero not allowed: {ctx}")));
+        return Err(SemverErrorKind::LeadingZero.into());
     }
     while *pos < b.len() && b[*pos].is_ascii_digit() {
         *pos += 1;
     }
     let digits = &b[start..*pos];
     if digits.len() > 16 {
-        return Err(SemverError::new(format!(
-            "number exceeds MAX_SAFE_INTEGER: {}",
-            &ctx[start..*pos]
-        )));
+        return Err(SemverErrorKind::MaxSafeIntegerExceeded.into());
     }
-    let n = parse_core_number_digits(digits, ctx)?;
+    let n = parse_ascii_digits(digits);
     if n > MAX_SAFE_INTEGER {
-        return Err(SemverError::new(format!(
-            "number exceeds MAX_SAFE_INTEGER: {n}"
-        )));
+        return Err(SemverErrorKind::MaxSafeIntegerExceeded.into());
     }
     Ok(n)
 }
@@ -267,5 +264,26 @@ fn compare_core_and_prerelease(left: &Version, right: &Version) -> Ordering {
         (false, true) => Ordering::Less,
         (true, true) => Ordering::Equal,
         (false, false) => left.pre_release.cmp_identifiers(&right.pre_release),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_nr_at;
+    use crate::number::MAX_SAFE_INTEGER;
+
+    #[test]
+    fn parse_nr_at_propagates_core_number_parse_errors() {
+        let bytes = b"9007199254740992";
+        let mut pos = 0;
+        assert!(parse_nr_at(bytes, &mut pos).is_err());
+    }
+
+    #[test]
+    fn parse_nr_at_parses_max_safe_integer() {
+        let bytes = b"9007199254740991";
+        let mut pos = 0;
+        assert_eq!(parse_nr_at(bytes, &mut pos).unwrap(), MAX_SAFE_INTEGER);
+        assert_eq!(pos, bytes.len());
     }
 }

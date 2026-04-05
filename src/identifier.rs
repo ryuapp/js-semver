@@ -1,11 +1,12 @@
 #[cfg(not(feature = "std"))]
-use alloc::{boxed::Box, format};
+use alloc::boxed::Box;
 
 use core::cmp::Ordering;
 use core::fmt;
 use core::str::FromStr;
 
 use crate::SemverError;
+use crate::error::SemverErrorKind;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// A parsed pre-release identifier list such as `alpha.1`.
@@ -33,7 +34,7 @@ impl PreRelease {
     /// Returns [`SemverError`] if `s` is not valid pre-release metadata.
     pub fn new(s: &str) -> Result<Self, SemverError> {
         if s.is_empty() {
-            return Err(SemverError::new("empty pre-release"));
+            return Err(SemverErrorKind::Empty.into());
         }
         validate_identifiers(s, parse_prerelease_identifier)?;
         Ok(Self(Box::from(s)))
@@ -111,7 +112,7 @@ impl BuildMetadata {
     /// Returns [`SemverError`] if `s` is not valid build metadata.
     pub fn new(s: &str) -> Result<Self, SemverError> {
         if s.is_empty() {
-            return Err(SemverError::new("empty build metadata"));
+            return Err(SemverErrorKind::Empty.into());
         }
         validate_identifiers(s, parse_build_metadata_identifier)?;
         Ok(Self(Box::from(s)))
@@ -184,7 +185,7 @@ impl<'a> Identifier<'a> {
 fn parse_prerelease_identifier(raw: &str) -> Result<Identifier<'_>, SemverError> {
     let bytes = raw.as_bytes();
     if bytes.is_empty() {
-        return Err(SemverError::new("empty pre-release identifier"));
+        return Err(SemverErrorKind::EmptySegment.into());
     }
 
     let mut all_digits = true;
@@ -193,16 +194,12 @@ fn parse_prerelease_identifier(raw: &str) -> Result<Identifier<'_>, SemverError>
         } else if byte.is_ascii_alphabetic() || byte == b'-' {
             all_digits = false;
         } else {
-            return Err(SemverError::new(format!(
-                "invalid pre-release identifier: {raw}"
-            )));
+            return Err(SemverErrorKind::UnexpectedCharacter(char::from(byte)).into());
         }
     }
 
     if all_digits && bytes.len() > 1 && bytes[0] == b'0' {
-        return Err(SemverError::new(format!(
-            "leading zero in pre-release: {raw}"
-        )));
+        return Err(SemverErrorKind::LeadingZero.into());
     }
 
     Ok(Identifier::new(
@@ -217,15 +214,13 @@ fn parse_prerelease_identifier(raw: &str) -> Result<Identifier<'_>, SemverError>
 
 fn parse_build_metadata_identifier(raw: &str) -> Result<Identifier<'_>, SemverError> {
     if raw.is_empty() {
-        return Err(SemverError::new("empty build metadata identifier"));
+        return Err(SemverErrorKind::EmptySegment.into());
     }
-    if !raw
+    if let Some(byte) = raw
         .bytes()
-        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        .find(|byte| !byte.is_ascii_alphanumeric() && *byte != b'-')
     {
-        return Err(SemverError::new(format!(
-            "invalid build metadata identifier: {raw}"
-        )));
+        return Err(SemverErrorKind::UnexpectedCharacter(char::from(byte)).into());
     }
     Ok(Identifier::new(
         raw,
@@ -330,6 +325,20 @@ mod tests {
     use alloc::string::ToString;
 
     use super::*;
+
+    fn fail_on_bad_left(raw: &str) -> Result<Identifier<'_>, SemverError> {
+        if raw == "bad-left" {
+            return Err(SemverErrorKind::Empty.into());
+        }
+        parse_prerelease_identifier(raw)
+    }
+
+    fn fail_on_bad_right(raw: &str) -> Result<Identifier<'_>, SemverError> {
+        if raw == "bad-right" {
+            return Err(SemverErrorKind::Empty.into());
+        }
+        parse_prerelease_identifier(raw)
+    }
 
     #[test]
     fn identifier_ordering() {
@@ -452,32 +461,72 @@ mod tests {
             cmp_dot_separated("alpha", "alpha.1", parse_prerelease_identifier),
             Ordering::Less
         );
+        assert_eq!(
+            Ord::cmp(
+                &PreRelease::new("alpha").unwrap(),
+                &PreRelease::new("beta").unwrap()
+            ),
+            Ordering::Less
+        );
+        assert_eq!(
+            PartialOrd::partial_cmp(
+                &BuildMetadata::new("build.1").unwrap(),
+                &BuildMetadata::new("build.2").unwrap()
+            ),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            parse_build_metadata_identifier("1")
+                .unwrap()
+                .partial_cmp(&parse_build_metadata_identifier("2").unwrap()),
+            Some(Ordering::Less)
+        );
+        assert_eq!("rc.1".parse::<PreRelease>().unwrap().to_string(), "rc.1");
+        assert_eq!(
+            "meta.42".parse::<BuildMetadata>().unwrap().to_string(),
+            "meta.42"
+        );
     }
 
     #[test]
-    fn cmp_dot_separated_fallback_paths() {
-        fn fail_on_left(raw: &str) -> Result<Identifier<'_>, SemverError> {
-            if raw == "bad" {
-                return Err(SemverError::new("bad left"));
-            }
-            Ok(Identifier::new(raw, IdentifierKind::AlphaNumeric))
-        }
-
-        fn fail_on_right(raw: &str) -> Result<Identifier<'_>, SemverError> {
-            if raw == "bad" {
-                return Err(SemverError::new("bad right"));
-            }
-            Ok(Identifier::new(raw, IdentifierKind::AlphaNumeric))
-        }
-
-        assert!(fail_on_left("ok").is_ok());
+    fn cmp_dot_separated_parser_failures_fallback_to_equal() {
         assert_eq!(
-            cmp_dot_separated("bad", "ok", fail_on_left),
+            fail_on_bad_left("alpha").unwrap(),
+            parse_prerelease_identifier("alpha").unwrap()
+        );
+        assert_eq!(
+            fail_on_bad_right("alpha").unwrap(),
+            parse_prerelease_identifier("alpha").unwrap()
+        );
+        assert_eq!(
+            cmp_dot_separated("bad-left", "alpha", fail_on_bad_left),
             Ordering::Equal
         );
         assert_eq!(
-            cmp_dot_separated("ok", "bad", fail_on_right),
+            cmp_dot_separated("alpha", "bad-right", fail_on_bad_right),
             Ordering::Equal
         );
+    }
+
+    #[test]
+    fn prerelease_cmp_identifiers_covers_empty_and_equal_cases() {
+        assert_eq!(
+            PreRelease::default().cmp(&PreRelease::default()),
+            Ordering::Equal
+        );
+        assert_eq!(
+            PreRelease::default().cmp(&PreRelease::new("0").unwrap()),
+            Ordering::Less
+        );
+        assert_eq!(
+            PreRelease::new("alpha")
+                .unwrap()
+                .cmp_identifiers(&PreRelease::new("alpha").unwrap()),
+            Ordering::Equal
+        );
+        assert!(PreRelease::new("").is_err());
+        assert!(PreRelease::new("alpha!1").is_err());
+        assert!(BuildMetadata::new("").is_err());
+        assert!(BuildMetadata::new("meta!1").is_err());
     }
 }

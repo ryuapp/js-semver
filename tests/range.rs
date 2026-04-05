@@ -13,6 +13,8 @@
     reason = "assert messages would be repetitive in table-style tests"
 )]
 
+use core::fmt::{self, Write as _};
+
 use js_semver::{Range, Version};
 
 fn v(s: &str) -> Version {
@@ -33,6 +35,20 @@ fn assert_display_case(input: &str, expected: &str) {
 
 fn assert_invalid_range(input: &str) {
     assert!(Range::parse(input).is_err());
+}
+
+struct FailingWriter {
+    fail_on: &'static str,
+    fail_any: bool,
+}
+
+impl fmt::Write for FailingWriter {
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        if self.fail_any || (!self.fail_on.is_empty() && s.contains(self.fail_on)) {
+            return Err(fmt::Error);
+        }
+        Ok(())
+    }
 }
 
 #[test]
@@ -161,6 +177,33 @@ fn wildcard_operator_forms() {
     assert!(!r("<=*").satisfies(&v("1.0.0-alpha")));
     assert!(!r("*").satisfies(&v("1.0.0-alpha")));
     assert!(!r("<*").satisfies(&v("0.0.0")));
+}
+
+#[test]
+fn range_display_propagates_formatter_errors() {
+    let mut wildcard_writer = FailingWriter {
+        fail_on: "*",
+        fail_any: false,
+    };
+    assert!(write!(&mut wildcard_writer, "{}", r("*")).is_err());
+
+    let mut or_writer = FailingWriter {
+        fail_on: "||",
+        fail_any: false,
+    };
+    assert!(write!(&mut or_writer, "{}", r("1.0.0 || >=2.0.0")).is_err());
+
+    let mut space_writer = FailingWriter {
+        fail_on: " ",
+        fail_any: false,
+    };
+    assert!(write!(&mut space_writer, "{}", r(">=1.0.0 <2.0.0")).is_err());
+
+    let mut comparator_writer = FailingWriter {
+        fail_on: "",
+        fail_any: true,
+    };
+    assert!(write!(&mut comparator_writer, "{}", r(">=1.0.0")).is_err());
 }
 
 #[test]
