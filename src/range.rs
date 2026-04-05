@@ -112,9 +112,9 @@ impl ComparatorSet {
 
 /// A version range, e.g. `^1.0.0` or `>=1.0.0 <2.0.0-0`.
 ///
-/// Its string form is canonicalized, so `to_string()` may differ from the
-/// original input when wildcards, build metadata, or redundant unions are
-/// normalized away.
+/// Its string form preserves the parsed comparator structure, but may differ
+/// from the original input when wildcards, build metadata, or unrestricted
+/// unions are simplified away.
 ///
 /// # Examples
 ///
