@@ -1,3 +1,5 @@
+// Includes tests adapted from node-semver. See NOTICE.md for details.
+
 #![allow(missing_docs, reason = "integration test crate")]
 #![allow(
     clippy::tests_outside_test_module,
@@ -47,9 +49,26 @@ fn parse_valid_and_display_cases() {
 
     let cases = [
         ("1.2.3", "1.2.3"),
+        ("1.2.3-0", "1.2.3-0"),
+        ("1.2.3-123", "1.2.3-123"),
+        ("1.2.3-1.2.3", "1.2.3-1.2.3"),
+        ("1.2.3-1a", "1.2.3-1a"),
+        ("1.2.3-a1", "1.2.3-a1"),
+        ("1.2.3-alpha", "1.2.3-alpha"),
         ("1.2.3-alpha.1", "1.2.3-alpha.1"),
+        ("1.2.3-alpha-1", "1.2.3-alpha-1"),
+        ("1.2.3-alpha-.-beta", "1.2.3-alpha-.-beta"),
+        ("1.2.3+456", "1.2.3+456"),
+        ("1.2.3+build", "1.2.3+build"),
+        ("1.2.3+new-build", "1.2.3+new-build"),
         ("1.2.3+build.42", "1.2.3+build.42"),
+        ("1.2.3+build.1", "1.2.3+build.1"),
+        ("1.2.3+build.1a", "1.2.3+build.1a"),
+        ("1.2.3+build.a1", "1.2.3+build.a1"),
+        ("1.2.3+build.alpha", "1.2.3+build.alpha"),
+        ("1.2.3+build.alpha.beta", "1.2.3+build.alpha.beta"),
         ("1.2.3-alpha.1+build", "1.2.3-alpha.1+build"),
+        ("1.2.3-alpha+build", "1.2.3-alpha+build"),
         ("v1.2.3", "1.2.3"),
         ("1.2.3--pre", "1.2.3--pre"),
         ("1.2.3-a+b", "1.2.3-a+b"),
@@ -77,6 +96,16 @@ fn build_is_ignored_in_eq_and_ord() {
 }
 
 #[test]
+fn upstream_equality_cases() {
+    assert_eq!(v("1.2.3"), v("v1.2.3"));
+    assert_eq!(v("1.2.3-0"), v("v1.2.3-0"));
+    assert_eq!(v("1.2.3-1"), v("v1.2.3-1"));
+    assert_eq!(v("1.2.3-beta"), v("v1.2.3-beta"));
+    assert_eq!(v("1.2.3-beta+build"), v("1.2.3-beta+otherbuild"));
+    assert_eq!(v("1.2.3+build"), v("1.2.3+otherbuild"));
+}
+
+#[test]
 fn cmp_build_uses_build_metadata_as_tiebreaker() {
     assert_eq!(v("1.2.3+a").cmp_build(&v("1.2.3+b")), Ordering::Less);
     assert_eq!(
@@ -90,6 +119,29 @@ fn cmp_versions() {
     assert!(v("1.0.0") < v("2.0.0"));
     assert!(v("2.0.0") > v("1.0.0"));
     assert_eq!(v("1.0.0"), v("1.0.0"));
+}
+
+#[test]
+fn upstream_comparison_cases() {
+    assert!(v("0.0.0") > v("0.0.0-foo"));
+    assert!(v("0.0.1") > v("0.0.0"));
+    assert!(v("1.0.0") > v("0.9.9"));
+    assert!(v("0.10.0") > v("0.9.0"));
+    assert!(v("0.99.0") > v("0.10.0"));
+    assert!(v("2.0.0") > v("1.2.3"));
+    assert!(v("1.2.3") > v("1.2.3-asdf"));
+    assert!(v("1.2.3") > v("1.2.3-4"));
+    assert!(v("1.2.3") > v("1.2.3-4-foo"));
+    assert!(v("1.2.3-5-foo") > v("1.2.3-5"));
+    assert!(v("1.2.3-5") > v("1.2.3-4"));
+    assert!(v("1.2.3-5-foo") > v("1.2.3-5-Foo"));
+    assert!(v("3.0.0") > v("2.7.2+asdf"));
+    assert!(v("1.2.3-a.10") > v("1.2.3-a.5"));
+    assert!(v("1.2.3-a.b") > v("1.2.3-a.5"));
+    assert!(v("1.2.3-a.b") > v("1.2.3-a"));
+    assert!(v("1.2.3-a.b.c.10.d.5") > v("1.2.3-a.b.c.5.d.100"));
+    assert!(v("1.2.3-r2") > v("1.2.3-r100"));
+    assert!(v("1.2.3-r100") > v("1.2.3-R2"));
 }
 
 #[test]
@@ -232,6 +284,7 @@ fn parse_invalid_cases() {
         "1.2.3#1".into(),
         "a.b.c".into(),
         "abc".into(),
+        "xyz".into(),
         "+1.2.3".into(),
         "1.+2.3".into(),
         "1.2.+3".into(),

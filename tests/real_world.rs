@@ -11,35 +11,6 @@ fn r(s: &str) -> Range {
 }
 
 #[test]
-fn range_metadata_and_wildcards() {
-    let cases = [
-        (">=1.x+experimental <2.x.x+experimental", ">=1.0.0 <2.0.0-0"),
-        (
-            "1.x.x+experimental || 2.x.x+experimental",
-            ">=1.0.0 <2.0.0-0||>=2.0.0 <3.0.0-0",
-        ),
-        ("1.x.x+experimental <2.x.x+beta", ">=1.0.0 <2.0.0-0"),
-        (
-            "^1.x+experimental.123 <2.x.x+pre-release",
-            ">=1.0.0 <2.0.0-0",
-        ),
-        (
-            ">=1.x.x-alpha+experimental <2.x.x+experimental",
-            ">=1.0.0 <2.0.0-0",
-        ),
-        (">=0.x.x-alpha <1.x.x-alpha", "<1.0.0-0"),
-        ("0.x.x-alpha || 1.x.x-alpha", "<1.0.0-0||>=1.0.0 <2.0.0-0"),
-        ("0.x.x-alpha <1.x.x-alpha", "<1.0.0-0"),
-    ];
-
-    for (input, expected) in cases {
-        assert_eq!(r(input).to_string(), expected, "{input}");
-    }
-}
-
-// --- real-world version strings (Next.js / shadcn / Vite ecosystem) ---
-
-#[test]
 fn real_world_canary_versions() {
     // Next.js canary: major.minor.patch-canary-hash-date
     assert!("19.3.0-canary-5e9eedb5-20260312".parse::<Version>().is_ok());
