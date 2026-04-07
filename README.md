@@ -47,3 +47,5 @@ fn main() {
 ## License
 
 MIT-0
+
+This project's tests incorporate material from third parties, but they are not part of the library. For attribution and additional notice information, see [NOTICE.md](NOTICE.md).
