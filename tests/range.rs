@@ -62,6 +62,13 @@ impl fmt::Write for FailingWriter {
 
 #[test]
 fn satisfies_cases() {
+    assert_satisfies_inclusion_cases();
+    assert_satisfies_additional_positive_cases();
+    assert_satisfies_negative_cases();
+    assert_non_matching_invalid_versions();
+}
+
+fn assert_satisfies_inclusion_cases() {
     assert_satisfies_case("1.2.3-pre+asdf - 2.4.3-pre+asdf", "1.2.3", true);
     assert_satisfies_case("1.2.3-pre+asdf - 2.4.3-pre+asdf", "1.2.3-pre.2", true);
     assert_satisfies_case("1.2.3-pre+asdf - 2.4.3-pre+asdf", "2.4.3-alpha", true);
@@ -143,6 +150,9 @@ fn satisfies_cases() {
     assert_satisfies_case("^0.0.1-alpha", "0.0.1", true);
     assert_satisfies_case("^0.1.1-alpha", "0.1.1-beta", true);
     assert_satisfies_case("^x", "1.2.3", true);
+}
+
+fn assert_satisfies_additional_positive_cases() {
     assert_satisfies_case("^0.0.1", "0.0.2", false);
     assert_satisfies_case("^1.2", "1.1.9", false);
     assert_satisfies_case("x - 1.0.0", "0.9.7", true);
@@ -161,6 +171,9 @@ fn satisfies_cases() {
     assert_satisfies_case(">1.0.0", "0.1.0", false);
     assert_satisfies_case("<=2.0.0", "3.0.0", false);
     assert_satisfies_case("<2.0.0", "2.2.9", false);
+}
+
+fn assert_satisfies_negative_cases() {
     assert_satisfies_case("0.1.20 || 1.2.4", "1.2.3", false);
     assert_satisfies_case(">=0.2.3 || <0.0.1", "0.0.3", false);
     assert_satisfies_case(">=0.2.3 || <0.0.1", "0.2.2", false);
@@ -201,6 +214,9 @@ fn satisfies_cases() {
     assert_satisfies_case("=1.2.3", "1.2.3-beta", false);
     assert_satisfies_case("^0.0.1", "0.0.2-alpha", false);
     assert_satisfies_case("^1.2.3", "2.0.0-alpha", false);
+}
+
+fn assert_non_matching_invalid_versions() {
     assert_non_matching_invalid_version("*", "not a version");
     assert_non_matching_invalid_version(">=2", "glorp");
 }
