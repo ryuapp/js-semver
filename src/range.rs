@@ -303,10 +303,6 @@ fn parse_xr(s: &str) -> Result<Option<u64>, SemverError> {
 // Comparator construction helpers (internal)
 // --------------------------------------------------------------------------
 
-fn release_version(major: u64, minor: u64, patch: u64) -> Version {
-    Version::new(major, minor, patch)
-}
-
 fn find_component_dots(
     bytes: &[u8],
     version_end: usize,
@@ -330,7 +326,16 @@ fn find_component_dots(
     Ok((first, second))
 }
 
-fn prerelease_version(major: u64, minor: u64, patch: u64, pre_release: PreRelease) -> Version {
+fn version_with_pre_release(
+    major: u64,
+    minor: u64,
+    patch: u64,
+    pre_release: PreRelease,
+) -> Version {
+    if pre_release.is_empty() {
+        return Version::new(major, minor, patch);
+    }
+
     Version {
         major,
         minor,
@@ -372,7 +377,12 @@ const fn comparator_eq(ver: Version) -> Comparator {
 }
 
 fn comparator_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
-    comparator_lt(prerelease_version(major, minor, patch, PreRelease::zero()))
+    comparator_lt(version_with_pre_release(
+        major,
+        minor,
+        patch,
+        PreRelease::zero(),
+    ))
 }
 
 fn next_component(value: u64) -> Result<u64, SemverError> {
@@ -392,19 +402,21 @@ fn expand_tilde_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), Semver
         (None, _, _) => {}
         (Some(0), None, _) => push_canonical_comparator(out, comparator_lt_upper_bound(1, 0, 0)),
         (Some(maj), None, _) => {
-            push_canonical_comparator(out, comparator_gte(release_version(maj, 0, 0)));
+            push_canonical_comparator(
+                out,
+                comparator_gte(version_with_pre_release(maj, 0, 0, PreRelease::default())),
+            );
             push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
         }
         (Some(maj), Some(mnr), None) => {
-            push_canonical_comparator(out, comparator_gte(release_version(maj, mnr, 0)));
+            push_canonical_comparator(
+                out,
+                comparator_gte(version_with_pre_release(maj, mnr, 0, PreRelease::default())),
+            );
             push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
         }
         (Some(maj), Some(mnr), Some(patch)) => {
-            let floor = if p.pre_release.is_empty() {
-                release_version(maj, mnr, patch)
-            } else {
-                prerelease_version(maj, mnr, patch, p.pre_release)
-            };
+            let floor = version_with_pre_release(maj, mnr, patch, p.pre_release);
             push_canonical_comparator(out, comparator_gte(floor));
             push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
         }
@@ -425,33 +437,41 @@ fn expand_caret_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), Semver
         (None, _, _) => {}
         (Some(0), None, _) => push_canonical_comparator(out, comparator_lt_upper_bound(1, 0, 0)),
         (Some(maj), None, _) => {
-            push_canonical_comparator(out, comparator_gte(release_version(maj, 0, 0)));
+            push_canonical_comparator(
+                out,
+                comparator_gte(version_with_pre_release(maj, 0, 0, PreRelease::default())),
+            );
             push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
         }
         (Some(maj), Some(mnr), None) => {
             if maj > 0 {
-                push_canonical_comparator(out, comparator_gte(release_version(maj, mnr, 0)));
+                push_canonical_comparator(
+                    out,
+                    comparator_gte(version_with_pre_release(maj, mnr, 0, PreRelease::default())),
+                );
                 push_canonical_comparator(
                     out,
                     comparator_lt_upper_bound(next_component(maj)?, 0, 0),
                 );
             } else if mnr > 0 {
-                push_canonical_comparator(out, comparator_gte(release_version(0, mnr, 0)));
+                push_canonical_comparator(
+                    out,
+                    comparator_gte(version_with_pre_release(0, mnr, 0, PreRelease::default())),
+                );
                 push_canonical_comparator(
                     out,
                     comparator_lt_upper_bound(0, next_component(mnr)?, 0),
                 );
             } else {
-                push_canonical_comparator(out, comparator_gte(release_version(0, 0, 0)));
+                push_canonical_comparator(
+                    out,
+                    comparator_gte(version_with_pre_release(0, 0, 0, PreRelease::default())),
+                );
                 push_canonical_comparator(out, comparator_lt_upper_bound(0, 1, 0));
             }
         }
         (Some(maj), Some(mnr), Some(patch)) => {
-            let floor = if p.pre_release.is_empty() {
-                release_version(maj, mnr, patch)
-            } else {
-                prerelease_version(maj, mnr, patch, p.pre_release)
-            };
+            let floor = version_with_pre_release(maj, mnr, patch, p.pre_release);
             push_canonical_comparator(out, comparator_gte(floor));
             if maj > 0 {
                 push_canonical_comparator(
@@ -498,11 +518,7 @@ fn expand_primitive_into(
 }
 
 fn version_from_partial(p: Partial, major: u64, minor: u64, patch: u64) -> Version {
-    if p.pre_release.is_empty() {
-        release_version(major, minor, patch)
-    } else {
-        prerelease_version(major, minor, patch, p.pre_release)
-    }
+    version_with_pre_release(major, minor, patch, p.pre_release)
 }
 
 fn expand_equal_primitive(out: &mut Vec<Comparator>, p: Partial) -> Result<(), SemverError> {
@@ -512,11 +528,17 @@ fn expand_equal_primitive(out: &mut Vec<Comparator>, p: Partial) -> Result<(), S
             push_canonical_comparator(out, comparator_lt_upper_bound(1, 0, 0));
         }
         (Some(maj), None, _) => {
-            push_canonical_comparator(out, comparator_gte(release_version(maj, 0, 0)));
+            push_canonical_comparator(
+                out,
+                comparator_gte(version_with_pre_release(maj, 0, 0, PreRelease::default())),
+            );
             push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
         }
         (Some(maj), Some(mnr), None) => {
-            push_canonical_comparator(out, comparator_gte(release_version(maj, mnr, 0)));
+            push_canonical_comparator(
+                out,
+                comparator_gte(version_with_pre_release(maj, mnr, 0, PreRelease::default())),
+            );
             push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
         }
         (Some(maj), Some(mnr), Some(patch)) => {
@@ -532,13 +554,23 @@ fn expand_greater_than_primitive(out: &mut Vec<Comparator>, p: Partial) -> Resul
         (Some(maj), None, _) => {
             push_canonical_comparator(
                 out,
-                comparator_gte(release_version(next_component(maj)?, 0, 0)),
+                comparator_gte(version_with_pre_release(
+                    next_component(maj)?,
+                    0,
+                    0,
+                    PreRelease::default(),
+                )),
             );
         }
         (Some(maj), Some(mnr), None) => {
             push_canonical_comparator(
                 out,
-                comparator_gte(release_version(maj, next_component(mnr)?, 0)),
+                comparator_gte(version_with_pre_release(
+                    maj,
+                    next_component(mnr)?,
+                    0,
+                    PreRelease::default(),
+                )),
             );
         }
         (Some(maj), Some(mnr), Some(patch)) => {
@@ -552,10 +584,16 @@ fn expand_greater_than_or_equal_primitive(out: &mut Vec<Comparator>, p: Partial)
     match (p.major, p.minor, p.patch) {
         (None, _, _) | (Some(0), None, _) => {}
         (Some(maj), None, _) => {
-            push_canonical_comparator(out, comparator_gte(release_version(maj, 0, 0)));
+            push_canonical_comparator(
+                out,
+                comparator_gte(version_with_pre_release(maj, 0, 0, PreRelease::default())),
+            );
         }
         (Some(maj), Some(mnr), None) => {
-            push_canonical_comparator(out, comparator_gte(release_version(maj, mnr, 0)));
+            push_canonical_comparator(
+                out,
+                comparator_gte(version_with_pre_release(maj, mnr, 0, PreRelease::default())),
+            );
         }
         (Some(maj), Some(mnr), Some(patch)) => {
             push_canonical_comparator(
@@ -626,11 +664,7 @@ fn expand_hyphen_into(
             push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
         }
         (Some(maj), Some(mnr), Some(patch)) => {
-            let ver = if b.pre_release.is_empty() {
-                release_version(maj, mnr, patch)
-            } else {
-                prerelease_version(maj, mnr, patch, b.pre_release)
-            };
+            let ver = version_with_pre_release(maj, mnr, patch, b.pre_release);
             push_canonical_comparator(out, comparator_lte(ver));
         }
     }
@@ -824,60 +858,56 @@ fn parse_token_into(all: &mut Vec<Comparator>, s: &str) -> Result<(), SemverErro
 
     if let Some(rest) = s.strip_prefix('~') {
         let rest = rest.trim_start_matches(['=', '>']); // ~= and ~> are aliases for ~
-        let rest = rest.trim();
-        if rest.is_empty() {
-            return Err(SemverErrorKind::MissingVersionAfterOperator("~").into());
-        }
-        return expand_tilde_into(all, parse_partial(rest)?);
+        return expand_tilde_into(all, parse_required_partial(rest, "~")?);
     }
     if let Some(rest) = s.strip_prefix('^') {
-        let rest = rest.trim();
-        if rest.is_empty() {
-            return Err(SemverErrorKind::MissingVersionAfterOperator("^").into());
-        }
-        return expand_caret_into(all, parse_partial(rest)?);
+        return expand_caret_into(all, parse_required_partial(rest, "^")?);
     }
     if let Some(rest) = s.strip_prefix(">=") {
-        let rest = rest.trim();
-        if rest.is_empty() {
-            return Err(SemverErrorKind::MissingVersionAfterOperator(">=").into());
-        }
         return expand_primitive_into(
             all,
             Some(Operator::GreaterThanOrEqual),
-            parse_partial(rest)?,
+            parse_required_partial(rest, ">=")?,
         );
     }
     if let Some(rest) = s.strip_prefix("<=") {
-        let rest = rest.trim();
-        if rest.is_empty() {
-            return Err(SemverErrorKind::MissingVersionAfterOperator("<=").into());
-        }
-        return expand_primitive_into(all, Some(Operator::LessThanOrEqual), parse_partial(rest)?);
+        return expand_primitive_into(
+            all,
+            Some(Operator::LessThanOrEqual),
+            parse_required_partial(rest, "<=")?,
+        );
     }
     if let Some(rest) = s.strip_prefix('>') {
-        let rest = rest.trim();
-        if rest.is_empty() {
-            return Err(SemverErrorKind::MissingVersionAfterOperator(">").into());
-        }
-        return expand_primitive_into(all, Some(Operator::GreaterThan), parse_partial(rest)?);
+        return expand_primitive_into(
+            all,
+            Some(Operator::GreaterThan),
+            parse_required_partial(rest, ">")?,
+        );
     }
     if let Some(rest) = s.strip_prefix('<') {
-        let rest = rest.trim();
-        if rest.is_empty() {
-            return Err(SemverErrorKind::MissingVersionAfterOperator("<").into());
-        }
-        return expand_primitive_into(all, Some(Operator::LessThan), parse_partial(rest)?);
+        return expand_primitive_into(
+            all,
+            Some(Operator::LessThan),
+            parse_required_partial(rest, "<")?,
+        );
     }
     if let Some(rest) = s.strip_prefix('=') {
-        let rest = rest.trim();
-        if rest.is_empty() {
-            return Err(SemverErrorKind::MissingVersionAfterOperator("=").into());
-        }
-        return expand_primitive_into(all, Some(Operator::Equal), parse_partial(rest)?);
+        return expand_primitive_into(
+            all,
+            Some(Operator::Equal),
+            parse_required_partial(rest, "=")?,
+        );
     }
 
     expand_primitive_into(all, None, parse_partial(s)?)
+}
+
+fn parse_required_partial(s: &str, operator: &'static str) -> Result<Partial, SemverError> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err(SemverErrorKind::MissingVersionAfterOperator(operator).into());
+    }
+    parse_partial(s)
 }
 
 fn push_canonical_comparator(all: &mut Vec<Comparator>, new: Comparator) {
