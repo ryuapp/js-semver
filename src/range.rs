@@ -7,7 +7,7 @@ use core::str::FromStr;
 use crate::error::SemverErrorKind;
 use crate::identifier::{BuildMetadata, PreRelease};
 use crate::number::{MAX_SAFE_INTEGER, parse_nr};
-use crate::version::Version;
+use crate::version::{Version, compare_core_and_prerelease};
 use crate::{MAX_LENGTH, SemverError};
 
 // --------------------------------------------------------------------------
@@ -801,33 +801,6 @@ fn count_whitespace_tokens(bytes: &[u8]) -> usize {
         }
     }
     count
-}
-
-fn compare_core_and_prerelease(left: &Version, right: &Version) -> core::cmp::Ordering {
-    match left.major.cmp(&right.major) {
-        core::cmp::Ordering::Equal => {}
-        ordering @ (core::cmp::Ordering::Less | core::cmp::Ordering::Greater) => {
-            return ordering;
-        }
-    }
-    match left.minor.cmp(&right.minor) {
-        core::cmp::Ordering::Equal => {}
-        ordering @ (core::cmp::Ordering::Less | core::cmp::Ordering::Greater) => {
-            return ordering;
-        }
-    }
-    match left.patch.cmp(&right.patch) {
-        core::cmp::Ordering::Equal => {}
-        ordering @ (core::cmp::Ordering::Less | core::cmp::Ordering::Greater) => {
-            return ordering;
-        }
-    }
-    match (left.pre_release.is_empty(), right.pre_release.is_empty()) {
-        (true, false) => core::cmp::Ordering::Greater,
-        (false, true) => core::cmp::Ordering::Less,
-        (true, true) => core::cmp::Ordering::Equal,
-        (false, false) => left.pre_release.cmp_identifiers(&right.pre_release),
-    }
 }
 
 /// Return `Some(comparators)` if `s` is a hyphen range `X - Y`, else `None`.

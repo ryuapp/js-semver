@@ -247,7 +247,7 @@ fn parse_nr_at(b: &[u8], pos: &mut usize) -> Result<u64, SemverError> {
     Ok(n)
 }
 
-fn compare_core_and_prerelease(left: &Version, right: &Version) -> Ordering {
+pub(crate) fn compare_core_and_prerelease(left: &Version, right: &Version) -> Ordering {
     macro_rules! cmp_field {
         ($field:ident) => {
             match left.$field.cmp(&right.$field) {
