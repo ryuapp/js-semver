@@ -1,2 +1,2 @@
 [tools]
-"cargo:cargo-llvm-cov" = "0.8.5"
+"aqua:taiki-e/cargo-llvm-cov" = "0.8.5"
