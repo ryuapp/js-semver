@@ -232,6 +232,9 @@ impl Partial {
 
 fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     let s = s.trim().trim_start_matches(['v', '=']);
+    if s.is_empty() || s.starts_with('.') {
+        return Err(SemverErrorKind::MissingVersionSegment.into());
+    }
     let bytes = s.as_bytes();
     let mut core_end = bytes.len();
     let mut pre_start = None;
