@@ -279,8 +279,13 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
 
     let pre_release = match pre_part {
         Some("") => return Err(SemverErrorKind::EmptySegment.into()),
+        Some(p) if p.ends_with('.') => return Err(SemverErrorKind::EmptySegment.into()),
+        Some(_) if major.is_none() && dot1.is_some() && dot2.is_some() =>
+        {
+            PreRelease::default()
+        }
         Some(p) => {
-            if major.is_none() || minor.is_none() || patch.is_none() {
+            if minor.is_none() || patch.is_none() {
                 return Err(SemverErrorKind::MissingVersionSegment.into());
             }
             PreRelease::new(p)?
@@ -317,6 +322,9 @@ fn find_component_dots(
     let mut pos = 0;
     while pos < version_end {
         if bytes[pos] == b'.' {
+            if pos == 0 || bytes[pos - 1] == b'.' {
+                return Err(SemverErrorKind::EmptySegment.into());
+            }
             if first.is_none() {
                 first = Some(pos);
             } else if second.is_none() {
@@ -687,9 +695,8 @@ fn expand_hyphen(a: Partial, b: Partial) -> Result<Vec<Comparator>, SemverError>
 
 fn parse_range(s: &str) -> Result<Range, SemverError> {
     let s = s.trim();
-    if s.len() > MAX_LENGTH {
-        return Err(SemverErrorKind::MaxLengthExceeded.into());
-    }
+    let exceeds_max_length = s.len() > MAX_LENGTH;
+    let trimmed_prefix_len = s.trim_start_matches(['v', '=', '^', '~', '>', '<']).len();
 
     let bytes = s.as_bytes();
     let mut set = Vec::with_capacity(count_or_groups(bytes));
@@ -707,15 +714,20 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
     }
     set.push(parse_comparator_set(s[start..].trim())?);
 
-    if set
+    let has_unbounded_set = set
         .iter()
-        .any(|comparator_set| comparator_set.comparators.is_empty())
-    {
+        .any(|comparator_set| comparator_set.comparators.is_empty());
+
+    if has_unbounded_set {
         return Ok(Range {
             set: vec![ComparatorSet {
                 comparators: vec![],
             }],
         });
+    }
+
+    if exceeds_max_length && trimmed_prefix_len > MAX_LENGTH {
+        return Err(SemverErrorKind::MaxLengthExceeded.into());
     }
 
     set.dedup();
