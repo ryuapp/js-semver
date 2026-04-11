@@ -30,6 +30,8 @@ type SatisfiesResult = {
 };
 
 const COPYRIGHT_YEAR = new Date().getFullYear();
+const COMMIT_HASH_FULL = import.meta.env.VITE_COMMIT_HASH;
+const COMMIT_HASH = COMMIT_HASH_FULL?.slice(0, 7) || "unknown";
 
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
@@ -202,7 +204,11 @@ export function App() {
     const versionMatches = versionResult.ok === nodeVersionOk;
     const satisfiesMatches = satisfiesResult.satisfies === nodeSatisfies;
     const allMatch = rangeMatches && versionMatches && satisfiesMatches;
-    const issueUrl = buildCompatIssueUrl(rangeInput, versionInput);
+    const issueUrl = buildCompatIssueUrl(
+      rangeInput,
+      versionInput,
+      COMMIT_HASH_FULL,
+    );
 
     return {
       tone: allMatch ? "good" as const : "bad" as const,
@@ -325,6 +331,15 @@ export function App() {
           href="https://ryu.app"
         >
           Ryu
+        </a>
+        {" · "}
+        <a
+          class="page-footer-link"
+          href={COMMIT_HASH_FULL
+            ? `https://github.com/ryuapp/js-semver/commit/${COMMIT_HASH_FULL}`
+            : "https://github.com/ryuapp/js-semver"}
+        >
+          {COMMIT_HASH}
         </a>
       </footer>
     </main>

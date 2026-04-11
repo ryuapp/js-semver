@@ -40,6 +40,7 @@ jobs:
         working-directory: playground
         run: deno task build
         env:
+          VITE_COMMIT_HASH: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           JS_SEMVER_OG_URL: ${{ secrets.JS_SEMVER_OG_URL }}
           JS_SEMVER_OG_AUTH: ${{ secrets.JS_SEMVER_OG_AUTH }}
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
