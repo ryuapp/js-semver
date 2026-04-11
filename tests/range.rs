@@ -496,6 +496,8 @@ fn invalid_partial_after_operator_errors() {
     assert!(Range::parse("=a.b.c").is_err());
     assert!(Range::parse("> a.b.c").is_err());
     assert!(Range::parse("^1.0.0 || >").is_err());
+    assert!(Range::parse("^2.x-rc.0").is_err());
+    assert!(Range::parse("1.2-rc.0").is_err());
 }
 
 #[test]

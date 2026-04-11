@@ -274,14 +274,15 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
         None => None,
     };
 
-    let pre_release = if patch.is_some() {
-        match pre_part {
-            Some(p) if !p.is_empty() => PreRelease::new(p)?,
-            Some(_) => return Err(SemverErrorKind::EmptySegment.into()),
-            None => PreRelease::default(),
+    let pre_release = match pre_part {
+        Some("") => return Err(SemverErrorKind::EmptySegment.into()),
+        Some(p) => {
+            if major.is_none() || minor.is_none() || patch.is_none() {
+                return Err(SemverErrorKind::MissingVersionSegment.into());
+            }
+            PreRelease::new(p)?
         }
-    } else {
-        PreRelease::default()
+        None => PreRelease::default(),
     };
 
     Ok(Partial {
@@ -1231,6 +1232,8 @@ mod tests {
             .is_err()
         );
         assert!(parse_partial("1.bad").is_err());
+        assert!(parse_partial("1.2-rc.0").is_err());
+        assert!(parse_partial("2.x-rc.0").is_err());
         assert_eq!(parse_range("1.0.0 || 2.0.0").unwrap().set.len(), 2);
         assert_eq!(parse_range("1.0.0 || 2.0.0 || 3.0.0").unwrap().set.len(), 3);
         assert!(parse_range(">= || 1.0.0").is_err());
