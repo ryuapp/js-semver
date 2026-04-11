@@ -280,10 +280,7 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     let pre_release = match pre_part {
         Some("") => return Err(SemverErrorKind::EmptySegment.into()),
         Some(p) if p.ends_with('.') => return Err(SemverErrorKind::EmptySegment.into()),
-        Some(_) if major.is_none() && dot1.is_some() && dot2.is_some() =>
-        {
-            PreRelease::default()
-        }
+        Some(_) if major.is_none() && dot1.is_some() && dot2.is_some() => PreRelease::default(),
         Some(p) => {
             if minor.is_none() || patch.is_none() {
                 return Err(SemverErrorKind::MissingVersionSegment.into());
