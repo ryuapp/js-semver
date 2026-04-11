@@ -71,3 +71,29 @@ jobs:
           files: lcov.info
           fail_ci_if_error: true
           use_oidc: true
+
+  playground:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2.0.4
+        with:
+          deno-version: v2.x
+          cache: true
+      - uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606 # v1.15.4
+        with:
+          target: wasm32-unknown-unknown
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+
+      - run: deno task wasm:build
+        working-directory: playground
+      - run: deno fmt --check
+        working-directory: playground
+      - run: deno lint
+        working-directory: playground
+      - run: deno check --unstable-tsgo .
+        working-directory: playground
+      - run: deno task build
+        working-directory: playground

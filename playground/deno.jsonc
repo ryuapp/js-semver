@@ -1,0 +1,31 @@
+{
+  "tasks": {
+    "dev": {
+      "command": "vite",
+      "dependencies": ["wasm:build"]
+    },
+    "build": {
+      "command": "vite build",
+      "dependencies": ["wasm:build"]
+    },
+    "wasm:build": "wasm-pack build wasm --target web --out-dir pkg --out-name js_semver_website_wasm",
+    "preview": "vite preview"
+  },
+  "imports": {
+    "@preact/preset-vite": "npm:@preact/preset-vite@2.10.5", // dev
+    "preact": "npm:preact@10.29.1",
+    "preact-render-to-string": "npm:preact-render-to-string@6.6.7",
+    "semver": "npm:semver@7.7.4",
+    "vite": "npm:vite@8.0.8", // dev
+    "vite-prerender-plugin": "npm:vite-prerender-plugin@0.5.13" // dev
+  },
+  "nodeModulesDir": "auto",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "preact"
+  },
+  "fmt": {
+    "proseWrap": "preserve"
+  },
+  "minimumDependencyAge": "P3D"
+}
