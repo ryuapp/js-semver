@@ -292,6 +292,9 @@ fn parse_valid_and_display_cases() {
     assert_display_case(">1.2", ">=1.3.0");
     assert_display_case("x", "*");
     assert_display_case("=x", "*");
+    assert_display_case("vx", "*");
+    assert_display_case("v1.2.3", "1.2.3");
+    assert_display_case("vvvv1", ">=1.0.0 <2.0.0-0");
 }
 
 #[test]
@@ -434,6 +437,8 @@ fn parse_token_star_mixed() {
 
 #[test]
 fn parse_invalid_cases() {
+    assert_invalid_range("v");
+    assert_invalid_range("v.1.1");
     assert_invalid_range("01.0.0");
     assert_invalid_range("1a.0.0");
     assert_invalid_range("9007199254740992.0.0");
