@@ -275,7 +275,7 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     };
 
     let pre_release = match pre_part {
-        Some(p) if p.is_empty() => return Err(SemverErrorKind::EmptySegment.into()),
+        Some("") => return Err(SemverErrorKind::EmptySegment.into()),
         Some(p) => {
             if major.is_none() || minor.is_none() || patch.is_none() {
                 return Err(SemverErrorKind::MissingVersionSegment.into());
