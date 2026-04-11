@@ -1,0 +1,59 @@
+name: Deploy Playground
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        github.event.workflow_run.conclusion == 'success'
+      }}
+    environment:
+      name: playground
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: denoland/setup-deno@909cc5acb0f6d94966bb766ecda42eab7f7732c2 # v2.0.3
+        with:
+          deno-version: v2.x
+          cache: true
+      - uses: actions-rust-lang/setup-rust-toolchain@150fca883cd4034361b621bd4e6a9d34e5143606 # v1.15.4
+        with:
+          target: wasm32-unknown-unknown
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+      - name: Build playground
+        working-directory: playground
+        run: deno task build
+        env:
+          JS_SEMVER_OG_URL: ${{ secrets.JS_SEMVER_OG_URL }}
+          JS_SEMVER_OG_AUTH: ${{ secrets.JS_SEMVER_OG_AUTH }}
+      - uses: actions/upload-pages-artifact@710c863796ae28f5e23bae6a7e18cdd9b51f5bd2 # v4.0.0
+        with:
+          path: playground/dist
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

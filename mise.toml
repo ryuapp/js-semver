@@ -1,2 +1,3 @@
 [tools]
 "aqua:taiki-e/cargo-llvm-cov" = "0.8.5"
+"aqua:rustwasm/wasm-pack" = "0.14.0"
