@@ -44,7 +44,7 @@ jobs:
         env:
           JS_SEMVER_OG_URL: ${{ secrets.JS_SEMVER_OG_URL }}
           JS_SEMVER_OG_AUTH: ${{ secrets.JS_SEMVER_OG_AUTH }}
-      - uses: actions/upload-pages-artifact@710c863796ae28f5e23bae6a7e18cdd9b51f5bd2 # v4.0.0
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
         with:
           path: playground/dist
 
