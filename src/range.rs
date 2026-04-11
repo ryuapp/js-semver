@@ -231,7 +231,12 @@ impl Partial {
 }
 
 fn parse_partial(s: &str) -> Result<Partial, SemverError> {
-    let s = s.trim().trim_start_matches(['v', '=']);
+    let s = s.trim();
+    let s = if has_fully_qualified_numeric_core_after_full_strip(s) {
+        s.strip_prefix(['v', '=']).unwrap_or(s)
+    } else {
+        s.trim_start_matches(['v', '='])
+    };
     if s.is_empty() || s.starts_with('.') {
         return Err(SemverErrorKind::MissingVersionSegment.into());
     }
@@ -242,6 +247,9 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     while i < bytes.len() {
         match bytes[i] {
             b'+' => {
+                if i + 1 == bytes.len() {
+                    return Err(SemverErrorKind::EmptySegment.into());
+                }
                 core_end = i;
                 break;
             }
@@ -253,6 +261,7 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     let version_end = pre_start.map_or(core_end, |start| start - 1);
     let version_core = &s[..version_end];
     let pre_part = pre_start.map(|start| &s[start..core_end]);
+    let build_part = (core_end < bytes.len()).then(|| &s[core_end + 1..]);
 
     if version_core.is_empty() && pre_part.is_some() {
         return Err(SemverErrorKind::MissingVersionSegment.into());
@@ -280,7 +289,14 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     let pre_release = match pre_part {
         Some("") => return Err(SemverErrorKind::EmptySegment.into()),
         Some(p) if p.ends_with('.') => return Err(SemverErrorKind::EmptySegment.into()),
-        Some(_) if major.is_none() && dot1.is_some() && dot2.is_some() => PreRelease::default(),
+        Some(p)
+            if dot1.is_some()
+                && dot2.is_some()
+                && (major.is_none() || minor.is_none() || patch.is_none()) =>
+        {
+            PreRelease::new(p)?;
+            PreRelease::default()
+        }
         Some(p) => {
             if minor.is_none() || patch.is_none() {
                 return Err(SemverErrorKind::MissingVersionSegment.into());
@@ -289,6 +305,14 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
         }
         None => PreRelease::default(),
     };
+
+    match build_part {
+        Some("") => return Err(SemverErrorKind::EmptySegment.into()),
+        Some(build) => {
+            BuildMetadata::new(build)?;
+        }
+        None => {}
+    }
 
     Ok(Partial {
         major,
@@ -303,6 +327,26 @@ fn parse_xr(s: &str) -> Result<Option<u64>, SemverError> {
         "" | "*" | "x" | "X" => Ok(None),
         _ => Ok(Some(parse_nr(s)?)),
     }
+}
+
+fn has_fully_qualified_numeric_core_after_full_strip(s: &str) -> bool {
+    if s.strip_prefix(['v', '=']).is_none() {
+        return false;
+    }
+    let fully_stripped = s.trim_start_matches(['v', '=']);
+    let core_end = fully_stripped
+        .find(['-', '+'])
+        .unwrap_or(fully_stripped.len());
+    let core = &fully_stripped[..core_end];
+    let mut parts = core.split('.');
+    let (Some(major), Some(minor), Some(patch), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    [major, minor, patch]
+        .into_iter()
+        .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
 }
 
 // --------------------------------------------------------------------------

@@ -51,6 +51,39 @@ struct FailingWriter {
     fail_any: bool,
 }
 
+const LONG_VX_WILDCARD: &str = concat!(
+    "vx.x.x-rc.0-build",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "111111111111111111111111111111111111111111111111111111111111"
+);
+
+const LONG_VX_PARTIAL_WILDCARD: &str = concat!(
+    "vx.x.1-rc.0-build",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "1111111111111111111111111111111111111111111111111111111111111111",
+    "111111111111111111111111111111111111111111111111111111111111"
+);
+
+const LONG_V_PREFIX_NUMERIC: &str = concat!(
+    "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
+    "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
+    "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
+    "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
+    "1"
+);
+
+const LONG_CARET_EQUALS_NUMERIC: &str = concat!(
+    "^",
+    "================================================================",
+    "================================================================",
+    "================================================================",
+    "================================================================",
+    "1"
+);
+
 impl fmt::Write for FailingWriter {
     fn write_str(&mut self, s: &str) -> fmt::Result {
         if self.fail_any || (!self.fail_on.is_empty() && s.contains(self.fail_on)) {
@@ -234,36 +267,6 @@ fn prerelease_restriction() {
 
 #[test]
 fn parse_valid_and_display_cases() {
-    let long_vx_wildcard = concat!(
-        "vx.x.x-rc.0-build",
-        "1111111111111111111111111111111111111111111111111111111111111111",
-        "1111111111111111111111111111111111111111111111111111111111111111",
-        "1111111111111111111111111111111111111111111111111111111111111111",
-        "111111111111111111111111111111111111111111111111111111111111"
-    );
-    let long_vx_partial_wildcard = concat!(
-        "vx.x.1-rc.0-build",
-        "1111111111111111111111111111111111111111111111111111111111111111",
-        "1111111111111111111111111111111111111111111111111111111111111111",
-        "1111111111111111111111111111111111111111111111111111111111111111",
-        "111111111111111111111111111111111111111111111111111111111111"
-    );
-    let long_v_prefix_numeric = concat!(
-        "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
-        "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
-        "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
-        "vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv",
-        "1"
-    );
-    let long_caret_equals_numeric = concat!(
-        "^",
-        "================================================================",
-        "================================================================",
-        "================================================================",
-        "================================================================",
-        "1"
-    );
-
     assert_display_case("0.1.20 || 1.2.4", "0.1.20||1.2.4");
     assert_display_case(">=0.2.3 || <0.0.1", ">=0.2.3||<0.0.1");
     assert_display_case("||", "*");
@@ -306,7 +309,7 @@ fn parse_valid_and_display_cases() {
     assert_display_case("^1.0", ">=1.0.0 <2.0.0-0");
     assert_display_case("^1.2", ">=1.2.0 <2.0.0-0");
     assert_display_case("^=1", ">=1.0.0 <2.0.0-0");
-    assert_display_case(long_caret_equals_numeric, ">=1.0.0 <2.0.0-0");
+    assert_display_case(LONG_CARET_EQUALS_NUMERIC, ">=1.0.0 <2.0.0-0");
     assert_display_case("^0.0.1", ">=0.0.1 <0.0.2-0");
     assert_display_case("^0.0.1-beta", ">=0.0.1-beta <0.0.2-0");
     assert_display_case("^x", "*");
@@ -328,9 +331,13 @@ fn parse_valid_and_display_cases() {
     assert_display_case("vx", "*");
     assert_display_case("vx.x.1-rc.0", "*");
     assert_display_case("vx.x.x-rc.0", "*");
-    assert_display_case(long_vx_wildcard, "*");
-    assert_display_case(long_vx_partial_wildcard, "*");
-    assert_display_case(long_v_prefix_numeric, ">=1.0.0 <2.0.0-0");
+    assert_display_case("v1.X.X-rc", ">=1.0.0 <2.0.0-0");
+    assert_display_case(LONG_VX_WILDCARD, "*");
+    assert_display_case(LONG_VX_PARTIAL_WILDCARD, "*");
+    assert_display_case("vv1.x", ">=1.0.0 <2.0.0-0");
+    assert_display_case("vv1.x.x", ">=1.0.0 <2.0.0-0");
+    assert_display_case("vv1.0", ">=1.0.0 <1.1.0-0");
+    assert_display_case(LONG_V_PREFIX_NUMERIC, ">=1.0.0 <2.0.0-0");
     assert_display_case("v1.2.3", "1.2.3");
     assert_display_case("vvvv1", ">=1.0.0 <2.0.0-0");
     assert_display_case("==1", ">=1.0.0 <2.0.0-0");
@@ -478,10 +485,14 @@ fn parse_token_star_mixed() {
 fn parse_invalid_cases() {
     assert_invalid_range("v");
     assert_invalid_range("v.1.1");
+    assert_invalid_range("vv1.0.0");
     assert_invalid_range("vx-rc.0");
     assert_invalid_range("vx..0");
     assert_invalid_range("vx.x-rc.0");
     assert_invalid_range("vx.x.x-rc.");
+    assert_invalid_range("v1.X.X-rc+");
+    assert_invalid_range("v1.x.x-rc1/");
+    assert_invalid_range("v1+meta.");
     assert_invalid_range("01.0.0");
     assert_invalid_range("1a.0.0");
     assert_invalid_range("9007199254740992.0.0");
