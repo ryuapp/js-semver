@@ -86,15 +86,14 @@ jobs:
         with:
           target: wasm32-unknown-unknown
       - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
-      - name: Format playground
-        run: deno fmt --check
+
+      - run: deno task wasm:build
         working-directory: playground
-      - name: Lint playground
-        run: deno lint
+      - run: deno fmt --check
         working-directory: playground
-      - name: Check playground
-        run: deno check --unstable-tsgo .
+      - run: deno lint
         working-directory: playground
-      - name: Build playground
-        run: deno task build
+      - run: deno check --unstable-tsgo .
+        working-directory: playground
+      - run: deno task build
         working-directory: playground
