@@ -1,78 +1,35 @@
 import { useEffect, useMemo, useState } from "preact/hooks";
-import semver from "semver";
 
-import { Input } from "./input.tsx";
-import { buildCompatIssueUrl } from "./issues.ts";
+import { CompatCard } from "./components/compat-card.tsx";
+import { Input } from "./components/input.tsx";
+import {
+  RangeStatusDetail,
+  VersionStatusDetail,
+} from "./components/status-detail.tsx";
+import { getCommitHash, getCommitLink } from "./utils/commit.ts";
+import {
+  getInitErrorMessage,
+  initJsSemver,
+  parseRange,
+  parseVersion,
+  satisfies,
+} from "./utils/js-semver.ts";
 import {
   getDefaultRange,
   getDefaultVersion,
   readInputsFromQuery,
   writeInputsToQuery,
-} from "./query.ts";
-import { type CardTone, ResultCard } from "./result-card.tsx";
-import init, {
-  parse_range,
-  parse_version,
-  satisfies as satisfies_range,
-} from "../wasm/pkg/js_semver_website_wasm.js";
-
-type ParseResult = {
-  input: string;
-  ok: boolean;
-  canonical: string | null;
-  error: string | null;
-};
-
-type SatisfiesResult = {
-  range: ParseResult;
-  version: ParseResult;
-  satisfies: boolean | null;
-};
+} from "./utils/query.ts";
+import {
+  getInputTone,
+  getTrailingVisual,
+  type ParseResult,
+  type SatisfiesResult,
+} from "./utils/result.tsx";
 
 const COPYRIGHT_YEAR = new Date().getFullYear();
 const COMMIT_HASH_FULL = import.meta.env.VITE_COMMIT_HASH;
-const COMMIT_HASH = COMMIT_HASH_FULL?.slice(0, 7) || "unknown";
-
-function parseJson<T>(value: string): T {
-  return JSON.parse(value) as T;
-}
-
-function parseCardState(
-  title: string,
-  result: ParseResult | null,
-): {
-  title: string;
-  tone: CardTone;
-  label: string;
-  detail: string;
-  pending: boolean;
-} {
-  if (result === null) {
-    return {
-      title,
-      tone: "neutral",
-      label: "Pending",
-      detail: "",
-      pending: true,
-    };
-  }
-
-  return result.ok
-    ? {
-      title,
-      tone: "good",
-      label: "Valid",
-      detail: `Canonical: ${result.canonical}`,
-      pending: false,
-    }
-    : {
-      title,
-      tone: "bad",
-      label: "Invalid",
-      detail: result.error ?? "Unknown parse error.",
-      pending: false,
-    };
-}
+const COMMIT_HASH = getCommitHash(COMMIT_HASH_FULL);
 
 export function App() {
   const [rangeInput, setRangeInput] = useState(() =>
@@ -89,14 +46,12 @@ export function App() {
 
     void (async () => {
       try {
-        await init();
+        await initJsSemver();
         if (active) {
           setIsReady(true);
         }
       } catch (error) {
-        const message = error instanceof Error
-          ? error.message
-          : "Failed to initialize wasm";
+        const message = getInitErrorMessage(error);
         if (active) {
           setInitError(message);
         }
@@ -126,108 +81,47 @@ export function App() {
     if (!isReady) {
       return null;
     }
-    return parseJson<ParseResult>(parse_range(rangeInput));
+    try {
+      return { canonical: parseRange(rangeInput) };
+    } catch (error) {
+      return { error: getInitErrorMessage(error) };
+    }
   }, [isReady, rangeInput]);
 
   const versionResult = useMemo<ParseResult | null>(() => {
     if (!isReady) {
       return null;
     }
-    return parseJson<ParseResult>(parse_version(versionInput));
+    try {
+      return { canonical: parseVersion(versionInput) };
+    } catch (error) {
+      return { error: getInitErrorMessage(error) };
+    }
   }, [isReady, versionInput]);
 
   const satisfiesResult = useMemo<SatisfiesResult | null>(() => {
     if (!isReady) {
       return null;
     }
-    return parseJson<SatisfiesResult>(
-      satisfies_range(rangeInput, versionInput),
-    );
-  }, [isReady, rangeInput, versionInput]);
 
-  const overallStatus = useMemo(() => {
-    if (satisfiesResult === null) {
-      return {
-        label: "Pending",
-        detail: "",
-        tone: "neutral" as const,
-        pending: true,
-      };
+    if (rangeResult === null || versionResult === null) {
+      return null;
     }
 
-    if (satisfiesResult.satisfies === null) {
+    if ("error" in rangeResult || "error" in versionResult) {
       return {
-        label: "Unavailable",
-        detail:
-          "`satisfies` is only evaluated after both inputs parse successfully.",
-        tone: "neutral" as const,
-        pending: false,
+        rangeCanonical: "",
+        versionCanonical: "",
+        value: null,
       };
     }
-
-    return satisfiesResult.satisfies
-      ? {
-        label: "Satisfied",
-        detail:
-          `${satisfiesResult.version.canonical} satisfies ${satisfiesResult.range.canonical}`,
-        tone: "good" as const,
-        pending: false,
-      }
-      : {
-        label: "Not satisfied",
-        detail:
-          `${satisfiesResult.version.canonical} does not satisfy ${satisfiesResult.range.canonical}`,
-        tone: "bad" as const,
-        pending: false,
-      };
-  }, [satisfiesResult]);
-
-  const compatStatus = useMemo(() => {
-    if (
-      rangeResult === null || versionResult === null || satisfiesResult === null
-    ) {
-      return {
-        tone: "neutral" as const,
-        label: "Pending",
-        detail:
-          "Range parse: pending\nVersion parse: pending\nSatisfies: pending",
-      };
-    }
-
-    const nodeRangeOk = semver.validRange(rangeInput) !== null;
-    const nodeVersionOk = semver.valid(versionInput) !== null;
-    const nodeSatisfies = nodeRangeOk && nodeVersionOk
-      ? semver.satisfies(versionInput, rangeInput)
-      : null;
-
-    const rangeMatches = rangeResult.ok === nodeRangeOk;
-    const versionMatches = versionResult.ok === nodeVersionOk;
-    const satisfiesMatches = satisfiesResult.satisfies === nodeSatisfies;
-    const allMatch = rangeMatches && versionMatches && satisfiesMatches;
-    const issueUrl = buildCompatIssueUrl(
-      rangeInput,
-      versionInput,
-      COMMIT_HASH_FULL,
-    );
 
     return {
-      tone: allMatch ? "good" as const : "bad" as const,
-      label: allMatch ? "Compatible" : "Mismatch",
-      detail: allMatch
-        ? "This js-semver follows node-semver parsing and range semantics."
-        : (
-          <>
-            Compatibility issues were found. You can report them easily using
-            the following link:
-            <br />
-            <a class="inline-link" href={issueUrl}>GitHub Issues</a>
-          </>
-        ),
+      rangeCanonical: rangeResult.canonical,
+      versionCanonical: versionResult.canonical,
+      value: satisfies(rangeInput, versionInput),
     };
-  }, [rangeInput, rangeResult, satisfiesResult, versionInput, versionResult]);
-
-  const rangeCard = parseCardState("Range Parse", rangeResult);
-  const versionCard = parseCardState("Version Parse", versionResult);
+  }, [isReady, rangeInput, rangeResult, versionInput, versionResult]);
 
   const handleRangeInputChange = (value: string) => {
     setRangeInput(value);
@@ -263,11 +157,9 @@ export function App() {
             value={rangeInput}
             onValueChange={handleRangeInputChange}
             placeholder={getDefaultRange()}
-            tone={rangeResult === null
-              ? "default"
-              : rangeResult.ok
-              ? "good"
-              : "bad"}
+            tone={getInputTone(rangeResult)}
+            trailingVisual={getTrailingVisual(rangeResult)}
+            detail={<RangeStatusDetail result={rangeResult} />}
           />
 
           <Input
@@ -275,11 +167,14 @@ export function App() {
             value={versionInput}
             onValueChange={handleVersionInputChange}
             placeholder={getDefaultVersion()}
-            tone={versionResult === null
-              ? "default"
-              : versionResult.ok
-              ? "good"
-              : "bad"}
+            tone={getInputTone(versionResult)}
+            trailingVisual={getTrailingVisual(versionResult)}
+            detail={
+              <VersionStatusDetail
+                parseResult={versionResult}
+                satisfiesResult={satisfiesResult}
+              />
+            }
           />
         </div>
 
@@ -287,41 +182,24 @@ export function App() {
           <div class="banner bad">WASM init failed: {initError}</div>
         )}
 
-        <div class="result-grid">
-          <ResultCard
-            title={rangeCard.title}
-            tone={rangeCard.tone}
-            label={rangeCard.label}
-            detail={rangeCard.detail || "Canonical: "}
-            pending={rangeCard.pending}
-          />
-
-          <ResultCard
-            title={versionCard.title}
-            tone={versionCard.tone}
-            label={versionCard.label}
-            detail={versionCard.detail || "Canonical: "}
-            pending={versionCard.pending}
+        <div class="result-stack">
+          <CompatCard
+            rangeInput={rangeInput}
+            versionInput={versionInput}
+            rangeResult={rangeResult}
+            versionResult={versionResult}
+            satisfiesResult={satisfiesResult}
+            commitHash={COMMIT_HASH_FULL}
           />
         </div>
 
-        <div class="result-stack">
-          <ResultCard
-            title="Satisfies"
-            tone={overallStatus.tone}
-            label={overallStatus.label}
-            detail={overallStatus.detail || "Result pending."}
-            pending={overallStatus.pending}
-          />
-        </div>
-
-        <div class="result-stack">
-          <ResultCard
-            title="node-semver compat"
-            tone={compatStatus.tone}
-            label={compatStatus.label}
-            detail={compatStatus.detail}
-          />
+        <div class="panel-meta">
+          <a
+            class="panel-meta-link"
+            href={getCommitLink(COMMIT_HASH_FULL)}
+          >
+            {COMMIT_HASH}
+          </a>
         </div>
       </section>
       <footer class="page-footer">
@@ -331,15 +209,6 @@ export function App() {
           href="https://ryu.app"
         >
           Ryu
-        </a>
-        {" · "}
-        <a
-          class="page-footer-link"
-          href={COMMIT_HASH_FULL
-            ? `https://github.com/ryuapp/js-semver/commit/${COMMIT_HASH_FULL}`
-            : "https://github.com/ryuapp/js-semver"}
-        >
-          {COMMIT_HASH}
         </a>
       </footer>
     </main>

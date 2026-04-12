@@ -8,11 +8,17 @@
       "command": "vite build",
       "dependencies": ["wasm:build"]
     },
+    "test": {
+      "command": "deno test --allow-read=wasm/pkg src/utils/js-semver_test.ts",
+      "dependencies": ["wasm:build"]
+    },
     "wasm:build": "wasm-pack build wasm --target web --out-dir pkg --out-name js_semver_website_wasm",
     "preview": "vite preview"
   },
   "imports": {
     "@preact/preset-vite": "npm:@preact/preset-vite@2.10.5", // dev
+    "@std/assert": "jsr:@std/assert@1.0.19",
+    "lucide-preact": "npm:lucide-preact@1.7.0",
     "preact": "npm:preact@10.29.1",
     "preact-render-to-string": "npm:preact-render-to-string@6.6.7",
     "semver": "npm:semver@7.7.4",
