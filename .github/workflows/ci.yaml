@@ -93,6 +93,8 @@ jobs:
         working-directory: playground
       - run: deno lint
         working-directory: playground
+      - run: deno task test
+        working-directory: playground
       - run: deno check --unstable-tsgo .
         working-directory: playground
       - run: deno task build

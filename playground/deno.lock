@@ -1,12 +1,26 @@
 {
   "version": "5",
   "specifiers": {
+    "jsr:@std/assert@1.0.19": "1.0.19",
+    "jsr:@std/internal@^1.0.12": "1.0.12",
     "npm:@preact/preset-vite@2.10.5": "2.10.5_@babel+core@7.29.0_vite@8.0.8_preact@10.29.1",
+    "npm:lucide-preact@1.7.0": "1.7.0_preact@10.29.1",
     "npm:preact-render-to-string@6.6.7": "6.6.7_preact@10.29.1",
     "npm:preact@10.29.1": "10.29.1",
     "npm:semver@7.7.4": "7.7.4",
     "npm:vite-prerender-plugin@0.5.13": "0.5.13_vite@8.0.8",
     "npm:vite@8.0.8": "8.0.8"
+  },
+  "jsr": {
+    "@std/assert@1.0.19": {
+      "integrity": "eaada96ee120cb980bc47e040f82814d786fe8162ecc53c91d8df60b8755991e",
+      "dependencies": [
+        "jsr:@std/internal"
+      ]
+    },
+    "@std/internal@1.0.12": {
+      "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
+    }
   },
   "npm": {
     "@babel/code-frame@7.29.0": {
@@ -373,15 +387,15 @@
         "@babel/core"
       ]
     },
-    "baseline-browser-mapping@2.10.10": {
-      "integrity": "sha512-sUoJ3IMxx4AyRqO4MLeHlnGDkyXRoUG0/AI9fjK+vS72ekpV0yWVY7O0BVjmBcRtkNcsAO2QDZ4tdKKGoI6YaQ==",
+    "baseline-browser-mapping@2.10.16": {
+      "integrity": "sha512-Lyf3aK28zpsD1yQMiiHD4RvVb6UdMoo8xzG2XzFIfR9luPzOpcBlAsT/qfB1XWS1bxWT+UtE4WmQgsp297FYOA==",
       "bin": true
     },
     "boolbase@1.0.0": {
       "integrity": "sha512-JZOSA7Mo9sNGB8+UjSgzdLtokWAky1zbztM3WRLCbZ70/3cTANmQmOdR7y2g+J0e2WXywy1yS468tY+IruqEww=="
     },
-    "browserslist@4.28.1": {
-      "integrity": "sha512-ZC5Bd0LgJXgwGqUknZY/vkUQ04r8NXnJZ3yYi4vDmSiZmC/pdSN0NbNRPxZpbtO4uAfDUAFffO8IZoM3Gj8IkA==",
+    "browserslist@4.28.2": {
+      "integrity": "sha512-48xSriZYYg+8qXna9kwqjIVzuQxi+KYWp2+5nCYnYKPTr0LvD89Jqk2Or5ogxz0NUMfIjhh2lIUX/LyX9B4oIg==",
       "dependencies": [
         "baseline-browser-mapping",
         "caniuse-lite",
@@ -391,8 +405,8 @@
       ],
       "bin": true
     },
-    "caniuse-lite@1.0.30001781": {
-      "integrity": "sha512-RdwNCyMsNBftLjW6w01z8bKEvT6e/5tpPVEgtn22TiLGlstHOVecsX2KHFkD5e/vRnIE4EGzpuIODb3mtswtkw=="
+    "caniuse-lite@1.0.30001787": {
+      "integrity": "sha512-mNcrMN9KeI68u7muanUpEejSLghOKlVhRqS/Za2IeyGllJ9I9otGpR9g3nsw7n4W378TE/LyIteA0+/FOZm4Kg=="
     },
     "convert-source-map@2.0.0": {
       "integrity": "sha512-Kvp459HrV2FEJ1CAsi1Ku+MY3kasH19TFykTz2xWmMeq6bk2NU3XXvfJ+Q61m0xktWwt+1HSYf3JZsTms3aRJg=="
@@ -444,8 +458,8 @@
         "domhandler"
       ]
     },
-    "electron-to-chromium@1.5.321": {
-      "integrity": "sha512-L2C7Q279W2D/J4PLZLk7sebOILDSWos7bMsMNN06rK482umHUrh/3lM8G7IlHFOYip2oAg5nha1rCMxr/rs6ZQ=="
+    "electron-to-chromium@1.5.334": {
+      "integrity": "sha512-mgjZAz7Jyx1SRCwEpy9wefDS7GvNPazLthHg8eQMJ76wBdGQQDW33TCrUTvQ4wzpmOrv2zrFoD3oNufMdyMpog=="
     },
     "entities@4.5.0": {
       "integrity": "sha512-V0hjH4dGPh9Ao5p0MoRY6BVqtwCjhz6vI5LT8AJ55H+4g9/4vbHx1I54fS0XuclLhDHArPQCiMjDxjaL8fPxhw=="
@@ -571,6 +585,12 @@
         "yallist"
       ]
     },
+    "lucide-preact@1.7.0_preact@10.29.1": {
+      "integrity": "sha512-gv743hfkCH2MeUmZQ9g4+Yd+/zZyAOLuXvxWo6CUY6kMrnnoDZnnwpSZqWsEveCC9LNp+NgHkeTfztObIue+SA==",
+      "dependencies": [
+        "preact"
+      ]
+    },
     "magic-string@0.30.21": {
       "integrity": "sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==",
       "dependencies": [
@@ -591,8 +611,8 @@
         "he"
       ]
     },
-    "node-releases@2.0.36": {
-      "integrity": "sha512-TdC8FSgHz8Mwtw9g5L4gR/Sh9XhSP/0DEkQxfEFXOpiul5IiHgHan2VhYYb6agDSfp4KuvltmGApc8HMgUrIkA=="
+    "node-releases@2.0.37": {
+      "integrity": "sha512-1h5gKZCF+pO/o3Iqt5Jp7wc9rH3eJJ0+nh/CIoiRwjRxde/hAHyLPXYN4V3CqKAbiZPSeJFSWHmJsbkicta0Eg=="
     },
     "nth-check@2.1.1": {
       "integrity": "sha512-lqjrjmaOoAnWfMmBPL+XNnynZh2+swxiX3WUE0s4yEHI6m+AwrK2UZOimIRl3X/4QctVqS8AiZjFqyOGrMXb/w==",
@@ -684,7 +704,7 @@
     "tslib@2.8.1": {
       "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="
     },
-    "update-browserslist-db@1.2.3_browserslist@4.28.1": {
+    "update-browserslist-db@1.2.3_browserslist@4.28.2": {
       "integrity": "sha512-Js0m9cx+qOgDxo0eMiFGEueWztz+d4+M3rGlmKPT+T4IS/jP4ylw3Nwpu6cpTTP8R1MAC1kF4VbdLt3ARf209w==",
       "dependencies": [
         "browserslist",
@@ -728,7 +748,9 @@
   },
   "workspace": {
     "dependencies": [
+      "jsr:@std/assert@1.0.19",
       "npm:@preact/preset-vite@2.10.5",
+      "npm:lucide-preact@1.7.0",
       "npm:preact-render-to-string@6.6.7",
       "npm:preact@10.29.1",
       "npm:semver@7.7.4",
