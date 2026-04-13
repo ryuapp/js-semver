@@ -759,6 +759,10 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
         .iter()
         .any(|comparator_set| comparator_set.comparators.is_empty());
 
+    if has_unbounded_set && set.len() > 1 && exceeds_max_length && trimmed_prefix_len > MAX_LENGTH {
+        return Err(SemverErrorKind::MaxLengthExceeded.into());
+    }
+
     if has_unbounded_set {
         return Ok(Range {
             set: vec![ComparatorSet {
@@ -798,6 +802,9 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
                 let op = t.as_bytes();
                 let ver = next.as_bytes();
                 let len = op.len() + ver.len();
+                if len > buf.len() {
+                    return Err(SemverErrorKind::MaxLengthExceeded.into());
+                }
                 buf[..op.len()].copy_from_slice(op);
                 buf[op.len()..len].copy_from_slice(ver);
                 // SAFETY: `t` and `next` are slices of the original `&str`, so their bytes are

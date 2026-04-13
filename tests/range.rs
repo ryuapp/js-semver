@@ -473,6 +473,9 @@ fn hyphen_partial_upper() {
 #[test]
 fn range_too_long() {
     assert!(Range::parse(&"^1.0.0 ".repeat(50)).is_err());
+    assert!(Range::parse(&format!(">= {}", "1".repeat(300))).is_err());
+    assert!(Range::parse(&format!("* || {}", "v".repeat(300) + "1")).is_err());
+    assert_eq!(Range::parse(LONG_VX_WILDCARD).unwrap().to_string(), "*");
 }
 
 #[test]
