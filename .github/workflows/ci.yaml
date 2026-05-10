@@ -83,7 +83,7 @@ jobs:
             github.com:443
             index.crates.io:443
             ingest.codecov.io:443
-            keybase.io:443
+            keybase.io/codecovsecurity/*:443
             o26192.ingest.us.sentry.io:443
             static.rust-lang.org:443
             storage.googleapis.com:443
