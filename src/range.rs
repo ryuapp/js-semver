@@ -961,21 +961,19 @@ fn push_canonical_comparator(all: &mut Vec<Comparator>, new: Comparator) {
             (
                 Operator::LessThan | Operator::LessThanOrEqual,
                 Operator::LessThan | Operator::LessThanOrEqual,
-            ) => {
-                if existing.version.major == new.version.major
-                    && existing.version.minor == new.version.minor
-                    && existing.version.patch == new.version.patch
+            ) if existing.version.major == new.version.major
+                && existing.version.minor == new.version.minor
+                && existing.version.patch == new.version.patch =>
+            {
+                let ordering = compare_core_and_prerelease(&existing.version, &new.version);
+                if ordering == core::cmp::Ordering::Greater
+                    || (ordering == core::cmp::Ordering::Equal
+                        && existing.op == Operator::LessThanOrEqual
+                        && new.op == Operator::LessThan)
                 {
-                    let ordering = compare_core_and_prerelease(&existing.version, &new.version);
-                    if ordering == core::cmp::Ordering::Greater
-                        || (ordering == core::cmp::Ordering::Equal
-                            && existing.op == Operator::LessThanOrEqual
-                            && new.op == Operator::LessThan)
-                    {
-                        *existing = new;
-                    }
-                    return;
+                    *existing = new;
                 }
+                return;
             }
             (Operator::Equal, Operator::Equal)
                 if compare_core_and_prerelease(&existing.version, &new.version)
