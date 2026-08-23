@@ -2,26 +2,38 @@ use crate::range::Range;
 use crate::version::Version;
 
 impl serde::Serialize for Version {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
         serializer.collect_str(self)
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Version {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
         let s = <&str as serde::Deserialize>::deserialize(deserializer)?;
         s.parse().map_err(serde::de::Error::custom)
     }
 }
 
 impl serde::Serialize for Range {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
         serializer.collect_str(self)
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Range {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
         let s = <&str as serde::Deserialize>::deserialize(deserializer)?;
         s.parse().map_err(serde::de::Error::custom)
     }
