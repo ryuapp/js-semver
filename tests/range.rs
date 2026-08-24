@@ -277,6 +277,7 @@ fn parse_valid_and_display_cases() {
     assert_display_case("^1.0.0", ">=1.0.0 <2.0.0-0");
     assert_display_case("1.0.0", "1.0.0");
     assert_display_case("=1.0.0", "1.0.0");
+    assert_display_case("0", "<1.0.0-0");
     assert_display_case("~0.x.0", "<1.0.0-0");
     assert_display_case("~1.x.0", ">=1.0.0 <2.0.0-0");
     assert_display_case("*", "*");
@@ -475,6 +476,9 @@ fn range_too_long() {
     assert!(Range::parse(&"^1.0.0 ".repeat(50)).is_err());
     assert!(Range::parse(&format!(">= {}", "1".repeat(300))).is_err());
     assert!(Range::parse(&format!("* || {}1", "v".repeat(300))).is_err());
+    let mut long_bounded_range = "1.0.0 || ".repeat(29);
+    long_bounded_range.push_str("1.0.0");
+    assert!(Range::parse(&long_bounded_range).is_err());
     assert_eq!(Range::parse(LONG_VX_WILDCARD).unwrap().to_string(), "*");
 }
 
@@ -508,6 +512,9 @@ fn parse_invalid_cases() {
     assert_invalid_range("^");
     assert_invalid_range("~");
     assert_invalid_range("~=");
+    assert_invalid_range(">= || 1.0.0");
+    assert_invalid_range("1.0.0 >=");
+    assert_invalid_range("10000000000000000");
     assert_invalid_range("1.0.0 -");
     assert_invalid_range("- 2.0.0");
     assert_invalid_range("1.0.0 - 2.0.0 - 3.0.0");

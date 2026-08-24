@@ -127,7 +127,30 @@ impl ComparatorSet {
 /// ```
 #[derive(Debug, Clone)]
 pub struct Range {
-    set: Vec<ComparatorSet>,
+    set: ComparatorSets,
+}
+
+#[derive(Debug, Clone)]
+enum ComparatorSets {
+    One(ComparatorSet),
+    Many(Vec<ComparatorSet>),
+}
+
+impl ComparatorSets {
+    fn iter(&self) -> core::slice::Iter<'_, ComparatorSet> {
+        match self {
+            Self::One(set) => core::slice::from_ref(set).iter(),
+            Self::Many(sets) => sets.iter(),
+        }
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        match self {
+            Self::One(_) => 1,
+            Self::Many(sets) => sets.len(),
+        }
+    }
 }
 
 impl Range {
@@ -169,7 +192,7 @@ impl Range {
     /// ```
     #[must_use]
     pub fn satisfies(&self, version: &Version) -> bool {
-        for comparator_set in &self.set {
+        for comparator_set in self.set.iter() {
             if comparator_set.test(version) {
                 return true;
             }
@@ -240,6 +263,9 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     if s.is_empty() || s.starts_with('.') {
         return Err(SemverErrorKind::MissingVersionSegment.into());
     }
+    if let Some(partial) = parse_simple_partial(s) {
+        return Ok(partial);
+    }
     let bytes = s.as_bytes();
     let mut core_end = bytes.len();
     let mut pre_start = None;
@@ -306,12 +332,8 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
         None => PreRelease::default(),
     };
 
-    match build_part {
-        Some("") => return Err(SemverErrorKind::EmptySegment.into()),
-        Some(build) => {
-            BuildMetadata::new(build)?;
-        }
-        None => {}
+    if let Some(build) = build_part {
+        BuildMetadata::new(build)?;
     }
 
     Ok(Partial {
@@ -320,6 +342,61 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
         patch,
         pre_release,
     })
+}
+
+fn parse_simple_partial(s: &str) -> Option<Partial> {
+    let bytes = s.as_bytes();
+    let (major, mut pos) = parse_simple_component(bytes, 0)?;
+    let mut minor = None;
+    let mut patch = None;
+
+    if pos < bytes.len() {
+        if bytes[pos] != b'.' {
+            return None;
+        }
+        (minor, pos) = parse_simple_component(bytes, pos + 1)?;
+    }
+
+    if pos < bytes.len() {
+        if bytes[pos] != b'.' {
+            return None;
+        }
+        (patch, pos) = parse_simple_component(bytes, pos + 1)?;
+    }
+
+    if pos != bytes.len() {
+        return None;
+    }
+
+    Some(Partial {
+        major,
+        minor,
+        patch,
+        pre_release: PreRelease::default(),
+    })
+}
+
+fn parse_simple_component(bytes: &[u8], start: usize) -> Option<(Option<u64>, usize)> {
+    match bytes.get(start).copied()? {
+        b'x' | b'X' | b'*' => Some((None, start + 1)),
+        first @ b'0'..=b'9' => {
+            if first == b'0' && bytes.get(start + 1).is_some_and(u8::is_ascii_digit) {
+                return None;
+            }
+
+            let mut pos = start;
+            let mut value = 0u64;
+            while let Some(digit @ b'0'..=b'9') = bytes.get(pos).copied() {
+                if pos - start == 16 {
+                    return None;
+                }
+                value = value * 10 + u64::from(digit - b'0');
+                pos += 1;
+            }
+            (value <= MAX_SAFE_INTEGER).then_some((Some(value), pos))
+        }
+        _ => None,
+    }
 }
 
 fn parse_xr(s: &str) -> Result<Option<u64>, SemverError> {
@@ -740,7 +817,21 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
     let trimmed_prefix_len = s.trim_start_matches(['v', '=', '^', '~', '>', '<']).len();
 
     let bytes = s.as_bytes();
-    let mut set = Vec::with_capacity(count_or_groups(bytes));
+    let group_count = count_or_groups(bytes);
+    if group_count == 1 {
+        let comparator_set = parse_comparator_set(s)?;
+        if !comparator_set.comparators.is_empty()
+            && exceeds_max_length
+            && trimmed_prefix_len > MAX_LENGTH
+        {
+            return Err(SemverErrorKind::MaxLengthExceeded.into());
+        }
+        return Ok(Range {
+            set: ComparatorSets::One(comparator_set),
+        });
+    }
+
+    let mut set = Vec::with_capacity(group_count);
     let mut start = 0;
     let mut i = 0;
     while i < bytes.len() {
@@ -765,9 +856,9 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
 
     if has_unbounded_set {
         return Ok(Range {
-            set: vec![ComparatorSet {
+            set: ComparatorSets::One(ComparatorSet {
                 comparators: vec![],
-            }],
+            }),
         });
     }
 
@@ -777,7 +868,16 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
 
     set.dedup();
 
-    Ok(Range { set })
+    if set.len() == 1 {
+        let comparator_set = set.remove(0);
+        return Ok(Range {
+            set: ComparatorSets::One(comparator_set),
+        });
+    }
+
+    Ok(Range {
+        set: ComparatorSets::Many(set),
+    })
 }
 
 fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
@@ -787,11 +887,17 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
         });
     }
 
+    let bytes = s.as_bytes();
+    if !bytes.iter().any(u8::is_ascii_whitespace) {
+        let mut comparators = Vec::with_capacity(2);
+        parse_token_into(&mut comparators, s)?;
+        return Ok(ComparatorSet { comparators });
+    }
+
     if let Some(comps) = try_hyphen(s)? {
         return Ok(ComparatorSet { comparators: comps });
     }
 
-    let bytes = s.as_bytes();
     let mut all = Vec::with_capacity(count_whitespace_tokens(bytes).saturating_mul(2));
     let mut pos = 0;
     while let Some(t) = next_whitespace_token(s, bytes, &mut pos) {
@@ -1295,10 +1401,17 @@ mod tests {
         assert!(parse_partial("1.bad").is_err());
         assert!(parse_partial("1.2-rc.0").is_err());
         assert!(parse_partial("2.x-rc.0").is_err());
+        assert!(parse_partial("1.2.3+").is_err());
+        assert!(parse_partial("10000000000000000").is_err());
+        assert_eq!(parse_range("^1.0.0").unwrap().set.len(), 1);
         assert_eq!(parse_range("1.0.0 || 2.0.0").unwrap().set.len(), 2);
         assert_eq!(parse_range("1.0.0 || 2.0.0 || 3.0.0").unwrap().set.len(), 3);
         assert!(parse_range(">= || 1.0.0").is_err());
         assert!(parse_range("1.0.0 || >=").is_err());
+        assert!(parse_comparator_set(">= ").is_err());
+        let mut long_bounded_range = "1.0.0 || ".repeat(29);
+        long_bounded_range.push_str("1.0.0");
+        assert!(parse_range(&long_bounded_range).is_err());
         assert_eq!(try_hyphen("1.0.0 - 2.0.0").unwrap().unwrap().len(), 2);
         assert!(try_hyphen("1.0.0 - 9007199254740991").is_err());
     }

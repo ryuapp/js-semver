@@ -36,7 +36,7 @@ impl PreRelease {
         if s.is_empty() {
             return Err(SemverErrorKind::Empty.into());
         }
-        validate_identifiers(s, parse_prerelease_identifier)?;
+        validate_prerelease(s)?;
         Ok(Self(Box::from(s)))
     }
 
@@ -114,7 +114,7 @@ impl BuildMetadata {
         if s.is_empty() {
             return Err(SemverErrorKind::Empty.into());
         }
-        validate_identifiers(s, parse_build_metadata_identifier)?;
+        validate_build_metadata(s)?;
         Ok(Self(Box::from(s)))
     }
 
@@ -182,54 +182,27 @@ impl<'a> Identifier<'a> {
     }
 }
 
-fn parse_prerelease_identifier(raw: &str) -> Result<Identifier<'_>, SemverError> {
+fn parse_prerelease_identifier(raw: &str) -> Identifier<'_> {
     let bytes = raw.as_bytes();
-    if bytes.is_empty() {
-        return Err(SemverErrorKind::EmptySegment.into());
-    }
-
-    let mut all_digits = true;
-    for &byte in bytes {
-        if byte.is_ascii_digit() {
-        } else if byte.is_ascii_alphabetic() || byte == b'-' {
-            all_digits = false;
-        } else {
-            return Err(SemverErrorKind::UnexpectedCharacter(char::from(byte)).into());
-        }
-    }
-
-    if all_digits && bytes.len() > 1 && bytes[0] == b'0' {
-        return Err(SemverErrorKind::LeadingZero.into());
-    }
-
-    Ok(Identifier::new(
+    Identifier::new(
         raw,
-        if all_digits {
+        if bytes.iter().all(u8::is_ascii_digit) {
             IdentifierKind::Numeric
         } else {
             IdentifierKind::AlphaNumeric
         },
-    ))
+    )
 }
 
-fn parse_build_metadata_identifier(raw: &str) -> Result<Identifier<'_>, SemverError> {
-    if raw.is_empty() {
-        return Err(SemverErrorKind::EmptySegment.into());
-    }
-    if let Some(byte) = raw
-        .bytes()
-        .find(|byte| !byte.is_ascii_alphanumeric() && *byte != b'-')
-    {
-        return Err(SemverErrorKind::UnexpectedCharacter(char::from(byte)).into());
-    }
-    Ok(Identifier::new(
+fn parse_build_metadata_identifier(raw: &str) -> Identifier<'_> {
+    Identifier::new(
         raw,
         if raw.bytes().all(|byte| byte.is_ascii_digit()) {
             IdentifierKind::Numeric
         } else {
             IdentifierKind::AlphaNumeric
         },
-    ))
+    )
 }
 
 impl PartialOrd for Identifier<'_> {
@@ -251,18 +224,65 @@ impl Ord for Identifier<'_> {
     }
 }
 
-fn validate_identifiers<'a>(
-    s: &'a str,
-    parser: fn(&'a str) -> Result<Identifier<'a>, SemverError>,
-) -> Result<(), SemverError> {
-    let mut start = 0;
-    while start <= s.len() {
-        let end = next_separator(s, start);
-        parser(&s[start..end])?;
-        if end == s.len() {
-            break;
+fn validate_prerelease(s: &str) -> Result<(), SemverError> {
+    let bytes = s.as_bytes();
+    let mut segment_start = 0;
+    let mut all_digits = true;
+
+    for (pos, &byte) in bytes.iter().enumerate() {
+        match byte {
+            b'.' => {
+                validate_prerelease_segment(bytes, segment_start, pos, all_digits)?;
+                segment_start = pos + 1;
+                all_digits = true;
+            }
+            b'0'..=b'9' => {}
+            b'A'..=b'Z' | b'a'..=b'z' | b'-' => all_digits = false,
+            _ => {
+                return Err(SemverErrorKind::UnexpectedCharacter(char::from(byte)).into());
+            }
         }
-        start = end + 1;
+    }
+
+    validate_prerelease_segment(bytes, segment_start, bytes.len(), all_digits)
+}
+
+fn validate_prerelease_segment(
+    bytes: &[u8],
+    start: usize,
+    end: usize,
+    all_digits: bool,
+) -> Result<(), SemverError> {
+    if start == end {
+        return Err(SemverErrorKind::EmptySegment.into());
+    }
+    if all_digits && end - start > 1 && bytes[start] == b'0' {
+        return Err(SemverErrorKind::LeadingZero.into());
+    }
+    Ok(())
+}
+
+fn validate_build_metadata(s: &str) -> Result<(), SemverError> {
+    let bytes = s.as_bytes();
+    let mut segment_start = 0;
+
+    for (pos, &byte) in bytes.iter().enumerate() {
+        match byte {
+            b'.' => {
+                if pos == segment_start {
+                    return Err(SemverErrorKind::EmptySegment.into());
+                }
+                segment_start = pos + 1;
+            }
+            b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'-' => {}
+            _ => {
+                return Err(SemverErrorKind::UnexpectedCharacter(char::from(byte)).into());
+            }
+        }
+    }
+
+    if segment_start == bytes.len() {
+        return Err(SemverErrorKind::EmptySegment.into());
     }
     Ok(())
 }
@@ -270,7 +290,7 @@ fn validate_identifiers<'a>(
 fn cmp_dot_separated<'a>(
     left: &'a str,
     right: &'a str,
-    parser: fn(&'a str) -> Result<Identifier<'a>, SemverError>,
+    parser: fn(&'a str) -> Identifier<'a>,
 ) -> Ordering {
     let mut left_start = 0;
     let mut right_start = 0;
@@ -279,24 +299,23 @@ fn cmp_dot_separated<'a>(
         let right_end = next_separator(right, right_start);
         let left_part = &left[left_start..left_end];
         let right_part = &right[right_start..right_end];
-        let Ok(left_id) = parser(left_part) else {
-            return Ordering::Equal;
-        };
-        let Ok(right_id) = parser(right_part) else {
-            return Ordering::Equal;
-        };
+        let left_id = parser(left_part);
+        let right_id = parser(right_part);
         match left_id.cmp(&right_id) {
             Ordering::Equal => {}
             ord @ (Ordering::Less | Ordering::Greater) => return ord,
         }
         let left_done = left_end == left.len();
         let right_done = right_end == right.len();
-        if left_done || right_done {
-            return match (left_done, right_done) {
-                (true, false) => Ordering::Less,
-                (false, true) => Ordering::Greater,
-                (true, true) | (false, false) => Ordering::Equal,
+        if left_done {
+            return if right_done {
+                Ordering::Equal
+            } else {
+                Ordering::Less
             };
+        }
+        if right_done {
+            return Ordering::Greater;
         }
         left_start = left_end + 1;
         right_start = right_end + 1;
@@ -326,61 +345,39 @@ mod tests {
 
     use super::*;
 
-    fn fail_on_bad_left(raw: &str) -> Result<Identifier<'_>, SemverError> {
-        if raw == "bad-left" {
-            return Err(SemverErrorKind::Empty.into());
-        }
-        parse_prerelease_identifier(raw)
-    }
-
-    fn fail_on_bad_right(raw: &str) -> Result<Identifier<'_>, SemverError> {
-        if raw == "bad-right" {
-            return Err(SemverErrorKind::Empty.into());
-        }
-        parse_prerelease_identifier(raw)
-    }
-
     #[test]
     fn identifier_ordering() {
         assert_eq!(
-            parse_build_metadata_identifier("1")
-                .unwrap()
-                .cmp(&parse_build_metadata_identifier("2").unwrap()),
+            parse_build_metadata_identifier("1").cmp(&parse_build_metadata_identifier("2")),
             Ordering::Less
         );
         assert_eq!(
             parse_build_metadata_identifier("18446744073709551615")
-                .unwrap()
-                .cmp(&parse_build_metadata_identifier("18446744073709551616").unwrap()),
+                .cmp(&parse_build_metadata_identifier("18446744073709551616")),
             Ordering::Less
         );
         assert_eq!(
             parse_build_metadata_identifier("18446744073709551616")
-                .unwrap()
-                .cmp(&parse_build_metadata_identifier("18446744073709551617").unwrap()),
+                .cmp(&parse_build_metadata_identifier("18446744073709551617")),
             Ordering::Less
         );
         assert_eq!(
-            parse_prerelease_identifier("1")
-                .unwrap()
-                .cmp(&parse_prerelease_identifier("alpha").unwrap()),
+            parse_prerelease_identifier("1").cmp(&parse_prerelease_identifier("alpha")),
             Ordering::Less
         );
         assert_eq!(
-            parse_prerelease_identifier("beta")
-                .unwrap()
-                .cmp(&parse_prerelease_identifier("1").unwrap()),
+            parse_prerelease_identifier("beta").cmp(&parse_prerelease_identifier("1")),
             Ordering::Greater
         );
     }
 
     #[test]
     fn prerelease_identifier_validation() {
-        assert!(parse_prerelease_identifier("").is_err());
-        assert!(parse_prerelease_identifier("01").is_err());
-        assert!(parse_prerelease_identifier("a!b").is_err());
+        assert!(PreRelease::new("").is_err());
+        assert!(PreRelease::new("01").is_err());
+        assert!(PreRelease::new("a!b").is_err());
         assert_eq!(
-            parse_prerelease_identifier("alpha-1").unwrap().kind,
+            parse_prerelease_identifier("alpha-1").kind,
             IdentifierKind::AlphaNumeric
         );
     }
@@ -452,9 +449,7 @@ mod tests {
     #[test]
     fn identifier_partial_cmp_and_prefix_order() {
         assert_eq!(
-            parse_prerelease_identifier("alpha")
-                .unwrap()
-                .partial_cmp(&parse_prerelease_identifier("alpha").unwrap()),
+            parse_prerelease_identifier("alpha").partial_cmp(&parse_prerelease_identifier("alpha")),
             Some(Ordering::Equal)
         );
         assert_eq!(
@@ -476,35 +471,13 @@ mod tests {
             Some(Ordering::Less)
         );
         assert_eq!(
-            parse_build_metadata_identifier("1")
-                .unwrap()
-                .partial_cmp(&parse_build_metadata_identifier("2").unwrap()),
+            parse_build_metadata_identifier("1").partial_cmp(&parse_build_metadata_identifier("2")),
             Some(Ordering::Less)
         );
         assert_eq!("rc.1".parse::<PreRelease>().unwrap().to_string(), "rc.1");
         assert_eq!(
             "meta.42".parse::<BuildMetadata>().unwrap().to_string(),
             "meta.42"
-        );
-    }
-
-    #[test]
-    fn cmp_dot_separated_parser_failures_fallback_to_equal() {
-        assert_eq!(
-            fail_on_bad_left("alpha").unwrap(),
-            parse_prerelease_identifier("alpha").unwrap()
-        );
-        assert_eq!(
-            fail_on_bad_right("alpha").unwrap(),
-            parse_prerelease_identifier("alpha").unwrap()
-        );
-        assert_eq!(
-            cmp_dot_separated("bad-left", "alpha", fail_on_bad_left),
-            Ordering::Equal
-        );
-        assert_eq!(
-            cmp_dot_separated("alpha", "bad-right", fail_on_bad_right),
-            Ordering::Equal
         );
     }
 

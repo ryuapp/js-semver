@@ -8,10 +8,25 @@ use criterion2::{Criterion, Throughput, black_box, criterion_group, criterion_ma
 use js_semver::{Range, Version};
 
 fn bench_version_parse(c: &mut Criterion) {
-    let version = "4.5.3";
-    let mut group = c.benchmark_group("version_parse");
+    bench_version_case(c, "version_parse", "4.5.3");
+    bench_version_case(c, "version_parse_prefixed", "v4.5.3");
+    bench_version_case(c, "version_parse_whitespace", "  4.5.3  ");
+    bench_version_case(c, "version_parse_prerelease", "4.1.0-rc.1");
+    bench_version_case(c, "version_parse_build", "4.1.0+build.42");
+    bench_version_case(c, "version_parse_prerelease_build", "4.1.0-rc.1+build.42");
+    bench_version_case(
+        c,
+        "version_parse_long_metadata",
+        "19.3.0-canary-044d56f3-20260330+sha.abcdef0123456789",
+    );
+    bench_version_case(c, "version_parse_invalid_core", "04.1.0");
+    bench_version_case(c, "version_parse_invalid_metadata", "4.1.0-alpha..1");
+}
+
+fn bench_version_case(c: &mut Criterion, name: &str, version: &str) {
+    let mut group = c.benchmark_group(name);
     group.throughput(Throughput::Bytes(u64::try_from(version.len()).unwrap_or(0)));
-    group.bench_function("version", |b| {
+    group.bench_function("js-semver", |b| {
         b.iter(|| {
             if let Ok(parsed) = Version::parse(black_box(version)) {
                 black_box(parsed);
@@ -25,7 +40,7 @@ fn bench_range_parse(c: &mut Criterion) {
     let range = "^4.2.0";
     let mut group = c.benchmark_group("range_parse");
     group.throughput(Throughput::Bytes(u64::try_from(range.len()).unwrap_or(0)));
-    group.bench_function("range", |b| {
+    group.bench_function("js-semver", |b| {
         b.iter(|| {
             if let Ok(parsed) = Range::parse(black_box(range)) {
                 black_box(parsed);
@@ -42,7 +57,7 @@ fn bench_parse_and_satisfies(c: &mut Criterion) {
     let bytes = u64::try_from(range.len() + version.len()).unwrap_or(0);
 
     group.throughput(Throughput::Bytes(bytes));
-    group.bench_function("full", |b| {
+    group.bench_function("js-semver", |b| {
         b.iter(|| {
             if let (Ok(parsed_range), Ok(parsed_version)) = (
                 Range::parse(black_box(range)),
