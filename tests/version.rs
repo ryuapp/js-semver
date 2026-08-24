@@ -14,7 +14,7 @@
 use core::cmp::Ordering;
 use core::fmt::{self, Write as _};
 
-use js_semver::Version;
+use js_semver::{BuildMetadata, PreRelease, Version};
 
 fn v(s: &str) -> Version {
     s.parse().unwrap()
@@ -82,6 +82,21 @@ fn parse_valid_and_display_cases() {
     for (input, expected) in cases {
         assert_eq!(input.parse::<Version>().unwrap().to_string(), expected);
     }
+
+    assert_eq!(Version::parse(" 1.2.3 ").unwrap(), Version::new(1, 2, 3));
+    assert_eq!(Version::parse(" 10.2.3 ").unwrap(), Version::new(10, 2, 3));
+    assert_eq!(
+        Version::parse("\u{2003}1.2.3\u{2003}").unwrap(),
+        Version::new(1, 2, 3)
+    );
+}
+
+#[test]
+fn identifier_prefix_ordering() {
+    assert!(PreRelease::new("alpha").unwrap() < PreRelease::new("alpha.1").unwrap());
+    assert!(PreRelease::new("alpha.1").unwrap() > PreRelease::new("alpha").unwrap());
+    assert!(BuildMetadata::new("build").unwrap() < BuildMetadata::new("build.1").unwrap());
+    assert!(BuildMetadata::new("build.1").unwrap() > BuildMetadata::new("build").unwrap());
 }
 
 #[test]
