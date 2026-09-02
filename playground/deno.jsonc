@@ -16,13 +16,13 @@
     "preview": "vite preview"
   },
   "imports": {
-    "@preact/preset-vite": "npm:@preact/preset-vite@2.10.5", // dev
+    "@preact/preset-vite": "npm:@preact/preset-vite@2.10.6", // dev
     "@std/assert": "jsr:@std/assert@1.0.19",
     "lucide-preact": "npm:lucide-preact@1.7.0",
-    "preact": "npm:preact@10.29.1",
-    "preact-render-to-string": "npm:preact-render-to-string@6.6.7",
-    "semver": "npm:semver@7.7.4",
-    "vite": "npm:vite@8.0.8", // dev
+    "preact": "npm:preact@10.29.8",
+    "preact-render-to-string": "npm:preact-render-to-string@6.7.0",
+    "semver": "npm:semver@7.8.5",
+    "vite": "npm:vite@8.2.2", // dev
     "vite-prerender-plugin": "npm:vite-prerender-plugin@0.5.13" // dev
   },
   "nodeModulesDir": "auto",

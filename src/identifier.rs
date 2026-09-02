@@ -262,7 +262,7 @@ fn validate_prerelease_segment(
     Ok(())
 }
 
-fn validate_build_metadata(s: &str) -> Result<(), SemverError> {
+pub(crate) fn validate_build_metadata(s: &str) -> Result<(), SemverError> {
     let bytes = s.as_bytes();
     let mut segment_start = 0;
 

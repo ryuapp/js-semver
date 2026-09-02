@@ -5,7 +5,7 @@ use core::fmt;
 use core::str::FromStr;
 
 use crate::error::SemverErrorKind;
-use crate::identifier::{BuildMetadata, PreRelease};
+use crate::identifier::{BuildMetadata, PreRelease, validate_build_metadata};
 use crate::number::{MAX_SAFE_INTEGER, parse_nr};
 use crate::version::{Version, compare_core_and_prerelease};
 use crate::{MAX_LENGTH, SemverError};
@@ -260,36 +260,28 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     } else {
         s.trim_start_matches(['v', '='])
     };
-    if s.is_empty() || s.starts_with('.') {
-        return Err(SemverErrorKind::MissingVersionSegment.into());
-    }
     if let Some(partial) = parse_simple_partial(s) {
         return Ok(partial);
     }
-    let bytes = s.as_bytes();
-    let mut core_end = bytes.len();
-    let mut pre_start = None;
-    let mut i = 0;
-    while i < bytes.len() {
-        match bytes[i] {
-            b'+' => {
-                if i + 1 == bytes.len() {
-                    return Err(SemverErrorKind::EmptySegment.into());
-                }
-                core_end = i;
-                break;
-            }
-            b'-' if pre_start.is_none() => pre_start = Some(i + 1),
-            _ => {}
-        }
-        i += 1;
+    let original_len = s.len();
+    let (s, pre_separator) = strip_build_metadata_and_find_prerelease(s)?;
+    if s.is_empty() || s.starts_with('.') {
+        return Err(SemverErrorKind::MissingVersionSegment.into());
     }
-    let version_end = pre_start.map_or(core_end, |start| start - 1);
+    if s.len() != original_len {
+        if let Some(partial) = parse_simple_partial(s) {
+            return Ok(partial);
+        }
+    }
+    let Some(pre_separator) = pre_separator else {
+        return Err(SemverErrorKind::InvalidNumber.into());
+    };
+    let bytes = s.as_bytes();
+    let version_end = pre_separator;
     let version_core = &s[..version_end];
-    let pre_part = pre_start.map(|start| &s[start..core_end]);
-    let build_part = (core_end < bytes.len()).then(|| &s[core_end + 1..]);
+    let pre_part = &s[pre_separator + 1..];
 
-    if version_core.is_empty() && pre_part.is_some() {
+    if version_core.is_empty() {
         return Err(SemverErrorKind::MissingVersionSegment.into());
     }
     if bytes.get(version_end.wrapping_sub(1)) == Some(&b'.') {
@@ -298,10 +290,12 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
 
     let (dot1, dot2) = find_component_dots(bytes, version_end, s)?;
 
-    let major = parse_xr(match dot1 {
-        Some(end) => &s[..end],
-        None => version_core,
-    })?;
+    let major_part = if let Some(end) = dot1 {
+        &s[..end]
+    } else {
+        version_core
+    };
+    let major = parse_xr(major_part)?;
     let minor = match (dot1, dot2) {
         (Some(start), Some(end)) => parse_xr(&s[start + 1..end])?,
         (Some(start), None) => parse_xr(&s[start + 1..version_end])?,
@@ -312,29 +306,20 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
         None => None,
     };
 
-    let pre_release = match pre_part {
-        Some("") => return Err(SemverErrorKind::EmptySegment.into()),
-        Some(p) if p.ends_with('.') => return Err(SemverErrorKind::EmptySegment.into()),
-        Some(p)
-            if dot1.is_some()
-                && dot2.is_some()
-                && (major.is_none() || minor.is_none() || patch.is_none()) =>
-        {
-            PreRelease::new(p)?;
-            PreRelease::default()
+    let pre_release = if pre_part.is_empty() || pre_part.ends_with('.') {
+        return Err(SemverErrorKind::EmptySegment.into());
+    } else if dot1.is_some()
+        && dot2.is_some()
+        && (major.is_none() || minor.is_none() || patch.is_none())
+    {
+        PreRelease::new(pre_part)?;
+        PreRelease::default()
+    } else {
+        if minor.is_none() || patch.is_none() {
+            return Err(SemverErrorKind::MissingVersionSegment.into());
         }
-        Some(p) => {
-            if minor.is_none() || patch.is_none() {
-                return Err(SemverErrorKind::MissingVersionSegment.into());
-            }
-            PreRelease::new(p)?
-        }
-        None => PreRelease::default(),
+        PreRelease::new(pre_part)?
     };
-
-    if let Some(build) = build_part {
-        BuildMetadata::new(build)?;
-    }
 
     Ok(Partial {
         major,
@@ -342,6 +327,37 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
         patch,
         pre_release,
     })
+}
+
+fn strip_build_metadata(s: &str) -> Result<&str, SemverError> {
+    let Some(plus) = s.find('+') else {
+        return Ok(s);
+    };
+    let build = &s[plus + 1..];
+    if build.is_empty() {
+        return Err(SemverErrorKind::EmptySegment.into());
+    }
+    validate_build_metadata(build)?;
+    Ok(&s[..plus])
+}
+
+fn strip_build_metadata_and_find_prerelease(s: &str) -> Result<(&str, Option<usize>), SemverError> {
+    let mut pre_separator = None;
+    for (pos, byte) in s.bytes().enumerate() {
+        match byte {
+            b'-' if pre_separator.is_none() => pre_separator = Some(pos),
+            b'+' => {
+                let build = &s[pos + 1..];
+                if build.is_empty() {
+                    return Err(SemverErrorKind::EmptySegment.into());
+                }
+                validate_build_metadata(build)?;
+                return Ok((&s[..pos], pre_separator));
+            }
+            _ => {}
+        }
+    }
+    Ok((s, pre_separator))
 }
 
 fn parse_simple_partial(s: &str) -> Option<Partial> {
@@ -637,6 +653,9 @@ fn expand_primitive_into(
     op: Option<Operator>,
     p: Partial,
 ) -> Result<(), SemverError> {
+    if (p.major.is_none() && p.minor.is_some()) || (p.minor.is_none() && p.patch.is_some()) {
+        return Err(SemverErrorKind::MissingVersionSegment.into());
+    }
     match op {
         None | Some(Operator::Equal) => expand_equal_primitive(out, p)?,
         Some(Operator::GreaterThan) => expand_greater_than_primitive(out, p)?,
@@ -813,17 +832,18 @@ fn expand_hyphen(a: Partial, b: Partial) -> Result<Vec<Comparator>, SemverError>
 
 fn parse_range(s: &str) -> Result<Range, SemverError> {
     let s = s.trim();
-    let exceeds_max_length = s.len() > MAX_LENGTH;
-    let trimmed_prefix_len = s.trim_start_matches(['v', '=', '^', '~', '>', '<']).len();
+    let exceeds_max_length =
+        s.len() > MAX_LENGTH && range_len_without_build_metadata(s) > MAX_LENGTH && {
+            let trimmed_prefix = s.trim_start_matches(['v', '=', '^', '~', '>', '<']);
+            trimmed_prefix.len() > MAX_LENGTH
+                && range_len_without_build_metadata(trimmed_prefix) > MAX_LENGTH
+        };
 
     let bytes = s.as_bytes();
     let group_count = count_or_groups(bytes);
     if group_count == 1 {
         let comparator_set = parse_comparator_set(s)?;
-        if !comparator_set.comparators.is_empty()
-            && exceeds_max_length
-            && trimmed_prefix_len > MAX_LENGTH
-        {
+        if !comparator_set.comparators.is_empty() && exceeds_max_length {
             return Err(SemverErrorKind::MaxLengthExceeded.into());
         }
         return Ok(Range {
@@ -850,7 +870,7 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
         .iter()
         .any(|comparator_set| comparator_set.comparators.is_empty());
 
-    if has_unbounded_set && set.len() > 1 && exceeds_max_length && trimmed_prefix_len > MAX_LENGTH {
+    if has_unbounded_set && set.len() > 1 && exceeds_max_length {
         return Err(SemverErrorKind::MaxLengthExceeded.into());
     }
 
@@ -862,7 +882,7 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
         });
     }
 
-    if exceeds_max_length && trimmed_prefix_len > MAX_LENGTH {
+    if exceeds_max_length {
         return Err(SemverErrorKind::MaxLengthExceeded.into());
     }
 
@@ -878,6 +898,26 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
     Ok(Range {
         set: ComparatorSets::Many(set),
     })
+}
+
+fn range_len_without_build_metadata(s: &str) -> usize {
+    let bytes = s.as_bytes();
+    let mut len = 0;
+    let mut pos = 0;
+    while pos < bytes.len() {
+        if bytes[pos] == b'+' {
+            pos += 1;
+            while pos < bytes.len()
+                && matches!(bytes[pos], b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'-' | b'.')
+            {
+                pos += 1;
+            }
+        } else {
+            len += 1;
+            pos += 1;
+        }
+    }
+    len
 }
 
 fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
@@ -906,7 +946,7 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
             if let Some(next) = next_whitespace_token(s, bytes, &mut pos) {
                 let mut buf = [0u8; 258];
                 let op = t.as_bytes();
-                let ver = next.as_bytes();
+                let ver = strip_build_metadata(next)?.as_bytes();
                 let len = op.len() + ver.len();
                 if len > buf.len() {
                     return Err(SemverErrorKind::MaxLengthExceeded.into());
@@ -1161,6 +1201,30 @@ mod tests {
     }
 
     #[test]
+    fn helper_build_metadata_stripping_and_length_coverage() {
+        assert!(has_fully_qualified_numeric_core_after_full_strip("v1.2.3"));
+        assert!(!has_fully_qualified_numeric_core_after_full_strip("v1.2.x"));
+        assert!(!has_fully_qualified_numeric_core_after_full_strip("v1..3"));
+        assert!(!has_fully_qualified_numeric_core_after_full_strip("v1.2"));
+        assert_eq!(strip_build_metadata("1.2.3+A0-z.9").unwrap(), "1.2.3");
+        assert_eq!(strip_build_metadata("1.2.3").unwrap(), "1.2.3");
+        assert!(strip_build_metadata("1.2.3+").is_err());
+        assert!(strip_build_metadata("1.2.3+bad!").is_err());
+        assert_eq!(
+            strip_build_metadata_and_find_prerelease("1.2.3-alpha-1+build").unwrap(),
+            ("1.2.3-alpha-1", Some(5))
+        );
+        assert_eq!(
+            strip_build_metadata_and_find_prerelease("1.2.3").unwrap(),
+            ("1.2.3", None)
+        );
+        assert!(strip_build_metadata_and_find_prerelease("1.2.3+").is_err());
+        assert!(strip_build_metadata_and_find_prerelease("1.2.3+bad!").is_err());
+        assert_eq!(range_len_without_build_metadata("1.2.3+A0-z.9"), 5);
+        assert_eq!(range_len_without_build_metadata("1.2.3+!"), 6);
+    }
+
+    #[test]
     fn helper_expand_primitive_equal_coverage() {
         assert_eq!(
             expand_primitive(None, parse_partial("1").unwrap())
@@ -1399,6 +1463,14 @@ mod tests {
             .is_err()
         );
         assert!(parse_partial("1.bad").is_err());
+        assert!(parse_partial("1.bad-alpha").is_err());
+        assert!(parse_partial("1.bad.3-alpha").is_err());
+        assert!(parse_partial("1-alpha").is_err());
+        assert!(parse_partial("bad-alpha").is_err());
+        assert!(parse_partial("-alpha").is_err());
+        assert!(parse_partial("1.-alpha").is_err());
+        assert!(parse_partial("1..2-alpha").is_err());
+        assert!(parse_partial("1.2.3.4-alpha").is_err());
         assert!(parse_partial("1.2-rc.0").is_err());
         assert!(parse_partial("2.x-rc.0").is_err());
         assert!(parse_partial("1.2.3+").is_err());
