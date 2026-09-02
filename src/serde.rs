@@ -1,3 +1,5 @@
+use core::fmt;
+
 use crate::range::Range;
 use crate::version::Version;
 
@@ -15,8 +17,24 @@ impl<'de> serde::Deserialize<'de> for Version {
     where
         D: serde::Deserializer<'de>,
     {
-        let s = <&str as serde::Deserialize>::deserialize(deserializer)?;
-        s.parse().map_err(serde::de::Error::custom)
+        struct VersionVisitor;
+
+        impl serde::de::Visitor<'_> for VersionVisitor {
+            type Value = Version;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a semantic version string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                v.parse().map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_str(VersionVisitor)
     }
 }
 
@@ -34,8 +52,24 @@ impl<'de> serde::Deserialize<'de> for Range {
     where
         D: serde::Deserializer<'de>,
     {
-        let s = <&str as serde::Deserialize>::deserialize(deserializer)?;
-        s.parse().map_err(serde::de::Error::custom)
+        struct RangeVisitor;
+
+        impl serde::de::Visitor<'_> for RangeVisitor {
+            type Value = Range;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a semantic version range string")
+            }
+
+            fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                v.parse().map_err(E::custom)
+            }
+        }
+
+        deserializer.deserialize_str(RangeVisitor)
     }
 }
 
@@ -70,5 +104,29 @@ mod tests {
         assert!(serde_json::from_str::<Range>("\"^\"").is_err());
         assert!(serde_json::from_str::<Version>("123").is_err());
         assert!(serde_json::from_str::<Range>("123").is_err());
+    }
+
+    #[test]
+    fn version_deserializes_owned_string() {
+        let version: Version = serde_json::from_value(serde_json::json!("1.2.3")).unwrap();
+        assert_eq!(version, Version::new(1, 2, 3));
+    }
+
+    #[test]
+    fn range_deserializes_owned_string_from_package_json() {
+        let package: serde_json::Value =
+            serde_json::from_str(r#"{"dependencies":{"react":"^19.0.0"}}"#).unwrap();
+        let range: Range =
+            serde_json::from_value(package["dependencies"]["react"].clone()).unwrap();
+        assert!(range.satisfies(&Version::new(19, 1, 0)));
+    }
+
+    #[test]
+    fn version_and_range_deserialize_transient_strings() {
+        let version: Version = serde_json::from_str(r#""1.2.\u0033""#).unwrap();
+        assert_eq!(version, Version::new(1, 2, 3));
+
+        let range: Range = serde_json::from_str(r#""^19.\u0030.0""#).unwrap();
+        assert!(range.satisfies(&Version::new(19, 1, 0)));
     }
 }

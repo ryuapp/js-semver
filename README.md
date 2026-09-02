@@ -34,6 +34,40 @@ fn main() {
 }
 ```
 
+## Features
+
+### `serde`
+
+Enable `serde` to serialize and deserialize versions and ranges:
+
+```toml
+[dependencies]
+js-semver = { version = "0.3", features = ["serde"] }
+serde_json = "1"
+```
+
+For example, read a dependency range from `package.json`:
+
+```rust
+use js_semver::Range;
+
+let package: serde_json::Value =
+    serde_json::from_str(r#"{"dependencies":{"react":"^19.0.0"}}"#).unwrap();
+let react: Range = serde_json::from_value(package["dependencies"]["react"].clone()).unwrap();
+assert!(react.satisfies(&"19.1.0".parse().unwrap()));
+```
+
+`Range` is serialized in its normalized form. Invalid strings produce a deserialization error.
+
+### `no-std`
+
+`std` feature is enabled by default. To use `js-semver` in a `no_std` environment, disable the default features:
+
+```toml
+[dependencies]
+js-semver = { version = "0.3", default-features = false }
+```
+
 ## Comparison with other crates
 
 ### node-semver
