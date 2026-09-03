@@ -8,7 +8,8 @@ function StaticApp() {
       <section class="hero">
         <h1>js-semver playground</h1>
         <p class="hero-copy">
-          A parser and evaluator for npm&apos;s flavor of Semantic Versioning.
+          Parser and evaluator for npm&apos;s flavor of Semantic Versioning,
+          compliant with node-semver
         </p>
         <p class="hero-link-row">
           <a class="hero-link" href="https://github.com/ryuapp/js-semver">
