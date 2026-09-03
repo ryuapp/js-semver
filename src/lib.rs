@@ -17,7 +17,7 @@
 //!   </a>
 //! </p>
 //!
-//! A parser and evaluator for npm's flavor of Semantic Versioning.
+//! Parser and evaluator for npm's flavor of Semantic Versioning, compliant with node-semver.
 //!
 //! This crate is designed for the JavaScript ecosystem and follows [node-semver](https://github.com/npm/node-semver) (the one npm uses) parsing and range semantics.
 //! It maintains high compatibility and performance, and has zero dependencies by default.

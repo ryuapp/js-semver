@@ -36,7 +36,10 @@ fn assert_display_case(input: &str, expected: &str) {
 }
 
 fn assert_invalid_range(input: &str) {
-    assert!(Range::parse(input).is_err());
+    assert!(
+        Range::parse(input).is_err(),
+        "range should be invalid: {input:?}"
+    );
 }
 
 fn assert_non_matching_invalid_version(range: &str, version: &str) {
@@ -330,11 +333,9 @@ fn parse_valid_and_display_cases() {
     assert_display_case("=x", "*");
     assert_display_case("==x", "*");
     assert_display_case("vx", "*");
-    assert_display_case("vx.x.1-rc.0", "*");
     assert_display_case("vx.x.x-rc.0", "*");
     assert_display_case("v1.X.X-rc", ">=1.0.0 <2.0.0-0");
     assert_display_case(LONG_VX_WILDCARD, "*");
-    assert_display_case(LONG_VX_PARTIAL_WILDCARD, "*");
     assert_display_case("vv1.x", ">=1.0.0 <2.0.0-0");
     assert_display_case("vv1.x.x", ">=1.0.0 <2.0.0-0");
     assert_display_case("vv1.0", ">=1.0.0 <1.1.0-0");
@@ -483,6 +484,17 @@ fn range_too_long() {
 }
 
 #[test]
+fn strips_long_build_metadata_from_ranges() {
+    let long_build = "a".repeat(251);
+
+    assert_display_case(&format!("v1.0+{}x6", "a".repeat(249)), ">=1.0.0 <1.1.0-0");
+    assert_display_case(&format!("1.2.3+{long_build} - 2.0.0"), ">=1.2.3 <=2.0.0");
+    assert_display_case(&format!("> 1.2.3+{long_build}"), ">1.2.3");
+    assert_display_case(&format!("~1.2.3+{long_build}"), ">=1.2.3 <1.3.0-0");
+    assert_display_case(&format!("^1.2.3+{long_build}"), ">=1.2.3 <2.0.0-0");
+}
+
+#[test]
 fn parse_token_star_mixed() {
     assert!(r(">=1.0.0 *").satisfies(&v("1.0.0")));
     assert!(!r(">=1.0.0 *").satisfies(&v("0.9.9")));
@@ -496,6 +508,14 @@ fn parse_invalid_cases() {
     assert_invalid_range("vx-rc.0");
     assert_invalid_range("vx..0");
     assert_invalid_range("vx.x-rc.0");
+    assert_invalid_range("1.x.5");
+    assert_invalid_range("1.*.5");
+    assert_invalid_range("1.x.5 || 2.x");
+    assert_invalid_range("x.1");
+    assert_invalid_range("x.1.2");
+    assert_invalid_range("x.x.1");
+    assert_invalid_range("vx.x.1-rc.0");
+    assert_invalid_range(LONG_VX_PARTIAL_WILDCARD);
     assert_invalid_range("vx.x.x-rc.");
     assert_invalid_range("v1.X.X-rc+");
     assert_invalid_range("v1.x.x-rc1/");
@@ -506,6 +526,8 @@ fn parse_invalid_cases() {
     assert_invalid_range(">");
     assert_invalid_range(">=");
     assert_invalid_range("> ");
+    assert_invalid_range("> 1.2.3+");
+    assert_invalid_range("> 1.2.3+bad!");
     assert_invalid_range("<");
     assert_invalid_range("<=");
     assert_invalid_range("=");
