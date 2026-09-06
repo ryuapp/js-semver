@@ -1038,6 +1038,10 @@ fn parse_token_into(all: &mut Vec<Comparator>, s: &str) -> Result<(), SemverErro
     if s.is_empty() || s == "*" {
         return Ok(());
     }
+    if s.starts_with('+') {
+        strip_build_metadata(s)?;
+        return Ok(());
+    }
 
     if let Some(rest) = s.strip_prefix('~') {
         let rest = rest.trim_start_matches(['=', '>']); // ~= and ~> are aliases for ~
