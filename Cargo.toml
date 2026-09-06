@@ -4,6 +4,7 @@ version = "0.4.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Parser and evaluator for npm's flavor of Semantic Versioning, compliant with node-semver"
+documentation = "https://docs.rs/js-semver"
 license = "MIT-0"
 repository = "https://github.com/ryuapp/js-semver"
 keywords = ["semver", "nodejs", "npm"]
