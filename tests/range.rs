@@ -284,6 +284,8 @@ fn parse_valid_and_display_cases() {
     assert_display_case("~0.x.0", "<1.0.0-0");
     assert_display_case("~1.x.0", ">=1.0.0 <2.0.0-0");
     assert_display_case("*", "*");
+    assert_display_case("+1", "*");
+    assert_display_case("+1.x.5", "*");
     assert_display_case("* || ^1.2.3", "*");
     assert_display_case(">X", "<0.0.0-0");
     assert_display_case("<X", "<0.0.0-0");
@@ -502,6 +504,8 @@ fn parse_token_star_mixed() {
 
 #[test]
 fn parse_invalid_cases() {
+    assert_invalid_range("+");
+    assert_invalid_range("+1.");
     assert_invalid_range("v");
     assert_invalid_range("v.1.1");
     assert_invalid_range("vv1.0.0");
