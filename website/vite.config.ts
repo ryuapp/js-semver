@@ -1,4 +1,5 @@
 import preact from "@preact/preset-vite";
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import { vitePrerenderPlugin } from "vite-prerender-plugin";
 import ogImage from "./plugins/og-image.ts";
@@ -8,6 +9,7 @@ export default defineConfig({
     assetsDir: "_next/static",
   },
   plugins: [
+    tailwindcss(),
     preact(),
     vitePrerenderPlugin({
       renderTarget: "#root",

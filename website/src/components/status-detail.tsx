@@ -15,11 +15,11 @@ export function RangeStatusDetail(
   const status = getParseStatus(result);
 
   return (
-    <div class="status-list">
-      <div class={`status-line ${status.tone}`}>
+    <div class="grid gap-1">
+      <div class={getStatusClassName(status.tone)}>
         <span>{status.content}</span>
       </div>
-      <div class="status-line status-line-spacer" aria-hidden="true">
+      <div class="hidden" aria-hidden="true">
         <span>1.0.0 satisfies *</span>
       </div>
     </div>
@@ -38,8 +38,8 @@ export function VersionStatusDetail(
   const satisfiesStatus = getSatisfiesStatus(satisfiesResult);
 
   return (
-    <div class="status-list">
-      <div class={`status-line ${parseStatus.tone}`}>
+    <div class="grid gap-1">
+      <div class={getStatusClassName(parseStatus.tone)}>
         <span>{parseStatus.content}</span>
       </div>
       {renderSatisfiesLine(satisfiesStatus)}
@@ -50,15 +50,20 @@ export function VersionStatusDetail(
 function renderSatisfiesLine(status: StatusResult) {
   if (status.content === null) {
     return (
-      <div class="status-line status-line-spacer" aria-hidden="true">
+      <div class="hidden" aria-hidden="true">
         <span>1.0.0 satisfies *</span>
       </div>
     );
   }
 
   return (
-    <div class={`status-line ${status.tone}`}>
+    <div class={getStatusClassName(status.tone)}>
       <span>{status.content}</span>
     </div>
   );
+}
+
+function getStatusClassName(tone: StatusResult["tone"]): string {
+  const base = "leading-relaxed";
+  return tone === "bad" ? `${base} text-red-700` : base;
 }
