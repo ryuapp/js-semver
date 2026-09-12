@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@keyframes status-into-icon {
+  from {
+    margin-left: 0.375rem;
+    max-width: 12ch;
+  }
+
+  to {
+    margin-left: 0;
+    max-width: 0;
+  }
+}
+
+@keyframes status-from-icon {
+  from {
+    max-width: 0;
+  }
+
+  to {
+    max-width: 12ch;
+  }
+}

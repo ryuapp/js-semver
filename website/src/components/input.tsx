@@ -1,5 +1,5 @@
 import type { ComponentChildren } from "preact";
-import { useId, useState } from "preact/hooks";
+import { useId } from "preact/hooks";
 
 type FieldTone = "default" | "good" | "bad";
 
@@ -24,28 +24,27 @@ type TextareaFieldProps = BaseFieldProps & {
 
 type FieldProps = InputFieldProps | TextareaFieldProps;
 
-function getToneClassName(tone: FieldTone): string {
-  switch (tone) {
-    case "good":
-      return "good";
-    case "bad":
-      return "bad";
-    default:
-      return "default";
-  }
-}
-
 export function Input(props: FieldProps) {
   const id = useId();
-  const [focused, setFocused] = useState(false);
-  const filled = props.value.trim().length > 0;
-  const toneClassName = getToneClassName(props.tone ?? "default");
+  const error = props.tone === "bad";
+  const detailId = `${id}-detail`;
+  const controlClassName = [
+    "block h-11 w-full rounded-md border bg-white px-4 pr-11",
+    "font-mono text-base text-neutral-900 placeholder:text-neutral-400",
+    "outline-none transition-colors disabled:cursor-not-allowed disabled:bg-neutral-100",
+    error
+      ? "border-red-600 focus:border-red-800"
+      : "border-neutral-300 hover:border-neutral-400 focus:border-neutral-900",
+  ].join(" ");
 
   const sharedProps = {
     id,
-    className: "field-control",
-    onFocus: () => setFocused(true),
-    onBlur: () => setFocused(false),
+    className: controlClassName,
+    "aria-describedby": detailId,
+    "aria-invalid": error,
+    spellcheck: false,
+    autoComplete: "off",
+    autoCapitalize: "off",
   };
 
   const inputProps = {
@@ -59,31 +58,30 @@ export function Input(props: FieldProps) {
     placeholder: props.placeholder,
     value: props.value,
   };
-  const fieldDataFilled = getFieldDataAttribute(filled);
-  const fieldDataFocused = getFieldDataAttribute(focused);
   const fieldBody = renderFieldBody(props, inputProps, textareaProps);
 
   return (
-    <label
-      className="field"
-      for={id}
-      data-filled={fieldDataFilled}
-      data-focused={fieldDataFocused}
-      data-tone={toneClassName}
+    <div
+      className="group grid w-full gap-1.5"
+      data-tone={props.tone ?? "default"}
     >
-      <span className="field-label">{props.label}</span>
+      <label
+        className="font-mono text-sm font-medium text-neutral-900"
+        for={id}
+      >
+        {props.label}
+      </label>
       {fieldBody}
-      <div className="field-detail">{props.detail}</div>
-    </label>
+      <div
+        className={error
+          ? "min-h-5 text-[13px] leading-relaxed text-red-700"
+          : "min-h-5 text-[13px] leading-relaxed text-neutral-600"}
+        id={detailId}
+      >
+        {props.detail}
+      </div>
+    </div>
   );
-}
-
-function getFieldDataAttribute(enabled: boolean): "" | undefined {
-  if (enabled) {
-    return "";
-  }
-
-  return undefined;
 }
 
 function renderFieldBody(
@@ -91,16 +89,12 @@ function renderFieldBody(
   inputProps: {
     id: string;
     className: string;
-    onFocus: () => void;
-    onBlur: () => void;
     placeholder: string | undefined;
     value: string;
   },
   textareaProps: {
     id: string;
     className: string;
-    onFocus: () => void;
-    onBlur: () => void;
     placeholder: string | undefined;
     value: string;
   },
@@ -116,7 +110,7 @@ function renderFieldBody(
   }
 
   return (
-    <span className="field-input-wrap">
+    <span className="relative flex min-w-0">
       <input
         {...inputProps}
         onInput={(event) => props.onValueChange(event.currentTarget.value)}
@@ -140,7 +134,7 @@ function renderTrailingVisual(trailingVisual?: ComponentChildren) {
   }
 
   return (
-    <span className="field-trailing-visual">
+    <span className="pointer-events-none absolute top-1/2 right-3.5 inline-flex -translate-y-1/2 text-emerald-700 group-data-[tone=bad]:text-red-700">
       {trailingVisual}
     </span>
   );

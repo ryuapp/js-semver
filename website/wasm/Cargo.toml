@@ -2,7 +2,7 @@
 name = "js-semver-website-wasm"
 version = "0.1.0"
 edition = "2024"
-description = "Wasm bindings for the js-semver playground"
+description = "Wasm bindings for the js-semver website"
 license = "MIT-0"
 repository = "https://github.com/ryuapp/js-semver"
 publish = false
