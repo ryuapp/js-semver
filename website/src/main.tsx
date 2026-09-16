@@ -19,6 +19,13 @@ document.title = isWebsitePath
 
 const revealRoot = () => {
   root.hidden = false;
+
+  const targetId = globalThis.location.hash.slice(1);
+  if (targetId.length > 0) {
+    requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView();
+    });
+  }
 };
 
 const app = isWebsitePath ? <App onWasmSettled={revealRoot} /> : <NotFound />;
