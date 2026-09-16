@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2026-09-16T16:39:21.310Z",
+  "native": {
+    "jsSemverVersion": "0.4.0",
+    "nodeSemverVersion": "2.2.0",
+    "rows": [
+      {
+        "label": "Parse version",
+        "jsSemverNs": 9.714596459645964,
+        "nodeSemverNs": 133.88284691629957
+      },
+      {
+        "label": "Parse range",
+        "jsSemverNs": 198.29944681677017,
+        "nodeSemverNs": 668.4114583333333
+      },
+      {
+        "label": "Parse + Satisfies",
+        "jsSemverNs": 335.1374797077922,
+        "nodeSemverNs": 1463.2771381578946
+      }
+    ]
+  }
+}

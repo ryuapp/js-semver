@@ -2,7 +2,7 @@ export function SiteFooter() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer class="pt-6 font-mono text-sm leading-relaxed text-neutral-500">
+    <footer class="mt-12 pt-6 font-mono text-sm leading-relaxed text-neutral-500">
       <nav
         class="flex flex-wrap items-center gap-x-4 gap-y-2"
         aria-label="Project links"

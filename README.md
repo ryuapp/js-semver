@@ -74,6 +74,10 @@ js-semver = { version = "0.4", default-features = false }
 
 [node-semver](https://crates.io/crates/node-semver) crate has numerous issues, including unnecessary dependencies like `miette`, incompatibilities with npm's [node-semver](https://github.com/npm/node-semver), and the fact that it is no longer actively maintained.
 
+#### Benchmarks
+
+Compared with the node-semver crate, js-semver is 3–13× faster. See the [detailed benchmark results](https://js-semver.ryu.app/#benchmarks).
+
 ### semver
 
 [semver](https://crates.io/crates/semver) crate is designed for Cargo. Therefore, it is not well-suited for the Node.js ecosystem, such as parsing versions in `package.json`.
