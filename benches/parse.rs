@@ -1,79 +1,50 @@
+#![feature(test)]
+#![allow(missing_docs, reason = "Benchmark items do not need documentation.")]
 #![allow(
-    missing_docs,
-    reason = "Criterion macros generate undocumented bench items."
+    clippy::tests_outside_test_module,
+    reason = "This crate contains only benchmarks."
 )]
 
-use criterion as criterion2;
-use criterion2::{Criterion, Throughput, black_box, criterion_group, criterion_main};
+extern crate test;
+
 use js_semver::{Range, Version};
+use test::{Bencher, black_box};
 
-fn bench_version_parse(c: &mut Criterion) {
-    bench_version_case(c, "version_parse", "4.5.3");
-    bench_version_case(c, "version_parse_prefixed", "v4.5.3");
-    bench_version_case(c, "version_parse_whitespace", "  4.5.3  ");
-    bench_version_case(c, "version_parse_prerelease", "4.1.0-rc.1");
-    bench_version_case(c, "version_parse_build", "4.1.0+build.42");
-    bench_version_case(c, "version_parse_prerelease_build", "4.1.0-rc.1+build.42");
-    bench_version_case(
-        c,
-        "version_parse_long_metadata",
-        "19.3.0-canary-044d56f3-20260330+sha.abcdef0123456789",
-    );
-    bench_version_case(c, "version_parse_invalid_core", "04.1.0");
-    bench_version_case(c, "version_parse_invalid_metadata", "4.1.0-alpha..1");
+macro_rules! version_benchmark {
+    ($name:ident, $input:literal) => {
+        #[bench]
+        fn $name(b: &mut Bencher) {
+            b.iter(|| black_box(Version::parse(black_box($input))));
+        }
+    };
 }
 
-fn bench_version_case(c: &mut Criterion, name: &str, version: &str) {
-    let mut group = c.benchmark_group(name);
-    group.throughput(Throughput::Bytes(u64::try_from(version.len()).unwrap_or(0)));
-    group.bench_function("js-semver", |b| {
-        b.iter(|| {
-            if let Ok(parsed) = Version::parse(black_box(version)) {
-                black_box(parsed);
-            }
-        });
-    });
-    group.finish();
-}
-
-fn bench_range_parse(c: &mut Criterion) {
-    let range = "^4.2.0";
-    let mut group = c.benchmark_group("range_parse");
-    group.throughput(Throughput::Bytes(u64::try_from(range.len()).unwrap_or(0)));
-    group.bench_function("js-semver", |b| {
-        b.iter(|| {
-            if let Ok(parsed) = Range::parse(black_box(range)) {
-                black_box(parsed);
-            }
-        });
-    });
-    group.finish();
-}
-
-fn bench_parse_and_satisfies(c: &mut Criterion) {
-    let range = "^4.1.0-rc";
-    let version = "4.1.0-rc.1";
-    let mut group = c.benchmark_group("parse_and_satisfies");
-    let bytes = u64::try_from(range.len() + version.len()).unwrap_or(0);
-
-    group.throughput(Throughput::Bytes(bytes));
-    group.bench_function("js-semver", |b| {
-        b.iter(|| {
-            if let (Ok(parsed_range), Ok(parsed_version)) = (
-                Range::parse(black_box(range)),
-                Version::parse(black_box(version)),
-            ) {
-                black_box(parsed_range.satisfies(&parsed_version));
-            }
-        });
-    });
-    group.finish();
-}
-
-criterion_group!(
-    benches,
-    bench_version_parse,
-    bench_range_parse,
-    bench_parse_and_satisfies
+version_benchmark!(version_parse, "4.5.3");
+version_benchmark!(version_parse_prefixed, "v4.5.3");
+version_benchmark!(version_parse_whitespace, "  4.5.3  ");
+version_benchmark!(version_parse_prerelease, "4.1.0-rc.1");
+version_benchmark!(version_parse_build, "4.1.0+build.42");
+version_benchmark!(version_parse_prerelease_build, "4.1.0-rc.1+build.42");
+version_benchmark!(
+    version_parse_long_metadata,
+    "19.3.0-canary-044d56f3-20260330+sha.abcdef0123456789"
 );
-criterion_main!(benches);
+version_benchmark!(version_parse_invalid_core, "04.1.0");
+version_benchmark!(version_parse_invalid_metadata, "4.1.0-alpha..1");
+
+#[bench]
+fn range_parse(b: &mut Bencher) {
+    b.iter(|| black_box(Range::parse(black_box("^4.2.0"))));
+}
+
+#[bench]
+fn parse_and_satisfies(b: &mut Bencher) {
+    b.iter(|| {
+        let range = Range::parse(black_box("^4.1.0-rc"));
+        let version = Version::parse(black_box("4.1.0-rc.1"));
+        black_box(match (range, version) {
+            (Ok(range), Ok(version)) => Some(range.satisfies(&version)),
+            _ => None,
+        })
+    });
+}
