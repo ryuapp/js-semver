@@ -231,7 +231,7 @@ fn release_greater_than_prerelease() {
 #[test]
 fn semver_error_display() {
     let err = "bad".parse::<Version>().unwrap_err();
-    assert!(!err.to_string().is_empty());
+    assert_ne!(err.to_string(), "");
 }
 
 #[test]

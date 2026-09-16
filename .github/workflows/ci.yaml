@@ -58,6 +58,7 @@ jobs:
           persist-credentials: false
       - uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
+          toolchain: nightly
           components: clippy,rustfmt
       - name: Check formatting
         run: cargo fmt --check
