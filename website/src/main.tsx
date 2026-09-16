@@ -17,10 +17,18 @@ document.title = isWebsitePath
   ? "js-semver - semver crate compliant with node-semver"
   : "Not Found";
 
-const app = isWebsitePath ? <App /> : <NotFound />;
+const revealRoot = () => {
+  root.hidden = false;
+};
+
+const app = isWebsitePath ? <App onWasmSettled={revealRoot} /> : <NotFound />;
 
 if (root.hasChildNodes()) {
   hydrate(app, root);
 } else {
   render(app, root);
+}
+
+if (!isWebsitePath) {
+  revealRoot();
 }

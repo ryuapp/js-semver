@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { ArrowDown } from "lucide-preact";
 
 import { AnnotatedText } from "./components/annotated-text.tsx";
+import { BenchmarkSection } from "./components/benchmark-section.tsx";
 import { CompatCard } from "./components/compat-card.tsx";
 import { GitHubLogo } from "./components/github-logo.tsx";
 import { Input } from "./components/input.tsx";
@@ -43,9 +44,14 @@ const EXAMPLES = [
 type AppProps = {
   initialRangeInput?: string;
   initialVersionInput?: string;
+  onWasmSettled?: () => void;
 };
 
-export function App({ initialRangeInput, initialVersionInput }: AppProps = {}) {
+export function App({
+  initialRangeInput,
+  initialVersionInput,
+  onWasmSettled,
+}: AppProps = {}) {
   const [rangeInput, setRangeInput] = useState(() =>
     initialRangeInput ?? readInputsFromQuery().rangeInput
   );
@@ -90,6 +96,12 @@ export function App({ initialRangeInput, initialVersionInput }: AppProps = {}) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (isReady || initError !== null) {
+      onWasmSettled?.();
+    }
+  }, [initError, isReady, onWasmSettled]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -286,6 +298,7 @@ export function App({ initialRangeInput, initialVersionInput }: AppProps = {}) {
           </div>
         </div>
       </section>
+      <BenchmarkSection />
       <SiteFooter />
     </main>
   );
