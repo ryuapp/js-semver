@@ -294,6 +294,37 @@ fn cmp_dot_separated<'a>(
 ) -> Ordering {
     let mut left_start = 0;
     let mut right_start = 0;
+    // Validated identifiers starting with a nondigit are already alphanumeric.
+    // Compare only their common prefix; do not scan suffixes after ordering is known.
+    let left_bytes = left.as_bytes();
+    let right_bytes = right.as_bytes();
+    if left_bytes
+        .first()
+        .is_some_and(|byte| !byte.is_ascii_digit())
+        && right_bytes
+            .first()
+            .is_some_and(|byte| !byte.is_ascii_digit())
+    {
+        for (offset, (&a, &b)) in left_bytes.iter().zip(right_bytes).enumerate() {
+            match (a == b'.', b == b'.') {
+                (true, true) => {
+                    left_start = offset + 1;
+                    right_start = offset + 1;
+                    break;
+                }
+                (true, false) => return Ordering::Less,
+                (false, true) => return Ordering::Greater,
+                (false, false) => {}
+            }
+            match a.cmp(&b) {
+                Ordering::Equal => {}
+                ordering @ (Ordering::Less | Ordering::Greater) => return ordering,
+            }
+        }
+        if left_start == 0 {
+            return left.len().cmp(&right.len());
+        }
+    }
     loop {
         let left_end = next_separator(left, left_start);
         let right_end = next_separator(right, right_start);
@@ -341,9 +372,81 @@ fn next_separator(s: &str, start: usize) -> usize {
 #[cfg(test)]
 mod tests {
     #[cfg(not(feature = "std"))]
-    use alloc::string::ToString;
+    use alloc::{format, string::ToString};
 
     use super::*;
+
+    #[test]
+    fn alphanumeric_fast_path_matches_identifier_ordering() {
+        let mut values = [
+            "",
+            "a",
+            "a-",
+            "a0",
+            "a.0",
+            "a.1",
+            "a.10",
+            "a.2",
+            "a.a",
+            "a.a.0",
+            "a.a-",
+            "-",
+            "-.0",
+            "-0",
+            "0",
+            "00",
+            "01",
+            "1",
+            "9",
+            "10",
+            "1a",
+            "1.a",
+            "A",
+            "Z",
+            "z",
+            "alpha",
+            "alpha.1",
+            "alpha-1",
+            "alpha0",
+            "canary-561ed529-20260423",
+            "canary-72135096-20260421",
+            "18446744073709551616",
+            "18446744073709551617",
+        ]
+        .map(str::to_string)
+        .to_vec();
+        for a in ["a", "b", "-", "0", "1", "9"] {
+            for b in ["a", "b", "-", "0", "1", "9"] {
+                values.push(format!("{a}.{b}"));
+                for c in ["a", "b", "-", "0", "1", "9"] {
+                    values.push(format!("{a}{b}{c}"));
+                }
+            }
+        }
+        let prefix = "a".repeat(128);
+        values.extend([
+            prefix.clone(),
+            format!("{prefix}-"),
+            format!("{prefix}.0"),
+            format!("{prefix}b"),
+        ]);
+        for left in &values {
+            for right in &values {
+                let expected = if left.is_empty() || right.is_empty() {
+                    left.len().cmp(&right.len())
+                } else {
+                    left.split('.')
+                        .map(parse_build_metadata_identifier)
+                        .cmp(right.split('.').map(parse_build_metadata_identifier))
+                };
+                assert_eq!(
+                    cmp_dot_separated(left, right, parse_build_metadata_identifier),
+                    expected,
+                    "{left:?} vs {right:?}"
+                );
+            }
+        }
+    }
 
     #[test]
     fn identifier_ordering() {
