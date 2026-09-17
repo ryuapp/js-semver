@@ -8,7 +8,6 @@ async function renderOgImage(): Promise<Uint8Array> {
         <div style="font-size: 32px; font-weight: 700; letter-spacing: -0.04em;">js-semver</div>
         <div style="display: flex; flex-direction: column; gap: 24px;">
           <div style="font-size: 58px; font-weight: 700; line-height: 1.08; letter-spacing: -0.045em;">Parser and evaluator for npm's flavor of Semantic Versioning, compliant with node-semver.</div>
-          <div style="font-size: 28px; line-height: 1.4; color: #525252;">It maintains high compatibility and performance, and has zero dependencies by default.</div>
         </div>
       </div>
     `,

@@ -195,18 +195,23 @@ export function App({
         <p class="m-0 text-base leading-snug">
           <span class="block">
             Parser and evaluator for npm&apos;s flavor of Semantic Versioning,
-            compliant with node-semver.
+            compliant with{" "}
+            <a
+              class="underline underline-offset-4"
+              href="https://github.com/npm/node-semver"
+            >
+              node-semver
+            </a>.
           </span>
           <span class="mt-[1lh] block">
-            This crate is designed for the JavaScript ecosystem and follows{" "}
+            It is written in pure Rust, offers high compatibility with{" "}
             <a
               class="underline underline-offset-4"
               href="https://github.com/npm/node-semver"
             >
               node-semver
             </a>{" "}
-            (the one npm uses) parsing and range semantics. It maintains high
-            compatibility and performance, and has zero dependencies by default.
+            and high performance, and has zero dependencies by default.
           </span>
         </p>
       </section>
