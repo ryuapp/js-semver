@@ -413,6 +413,9 @@ pub(crate) fn compare_core_and_prerelease(left: &Version, right: &Version) -> Or
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "std"))]
+    use alloc::string::ToString;
+
     use super::{Version, parse_nr_at};
     use crate::error::Position;
     use crate::number::MAX_SAFE_INTEGER;

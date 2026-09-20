@@ -1238,22 +1238,13 @@ mod tests {
                 "1.2..",
                 "unexpected character '.' while parsing patch version",
             ),
-            (
-                "1.2.3.4",
-                "unexpected character '.' after patch version",
-            ),
+            ("1.2.3.4", "unexpected character '.' after patch version"),
             (
                 "1.2.3.4-alpha",
                 "unexpected character '.' after patch version",
             ),
-            (
-                "1.2.3.",
-                "unexpected character '.' after patch version",
-            ),
-            (
-                ".1",
-                "unexpected character '.' while parsing major version",
-            ),
+            ("1.2.3.", "unexpected character '.' after patch version"),
+            (".1", "unexpected character '.' while parsing major version"),
             ("1-alpha", "missing minor version segment"),
             ("1.2-alpha", "missing patch version segment"),
             (
@@ -1284,10 +1275,7 @@ mod tests {
                 "x.1.2",
                 "unexpected character after wildcard in version range",
             ),
-            (
-                "1.0.0!",
-                "unexpected character '!' after patch version",
-            ),
+            ("1.0.0!", "unexpected character '!' after patch version"),
             (
                 "1.0.0-alpha!",
                 "unexpected character '!' after pre-release identifier",

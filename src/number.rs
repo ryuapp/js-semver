@@ -1,5 +1,5 @@
-use crate::error::{Position, SemverErrorKind};
 use crate::SemverError;
+use crate::error::{Position, SemverErrorKind};
 
 /// JavaScript's `Number.MAX_SAFE_INTEGER` (2^53 − 1).
 pub(crate) const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -36,9 +36,6 @@ pub(crate) fn parse_nr(s: &str, position: Position) -> Result<u64, SemverError> 
 
 #[cfg(test)]
 mod tests {
-    #[cfg(not(feature = "std"))]
-    use alloc::string::ToString;
-
     use super::*;
 
     #[test]
