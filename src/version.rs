@@ -368,7 +368,7 @@ fn parse_nr_at(input: &str, pos: &mut usize, position: Position) -> Result<u64, 
         return Err(SemverErrorKind::MissingVersionSegment(position).into());
     }
     if !b[start].is_ascii_digit() {
-        let Some(unexpected) = input[start..].chars().next() else {
+        let Some(unexpected) = input.get(start..).and_then(|tail| tail.chars().next()) else {
             return Err(SemverErrorKind::MissingVersionSegment(position).into());
         };
         return Err(SemverErrorKind::UnexpectedCharacterWhileParsing(unexpected, position).into());
@@ -425,6 +425,9 @@ mod tests {
         let input = "9007199254740992";
         let mut pos = 0;
         assert!(parse_nr_at(input, &mut pos, Position::Major).is_err());
+
+        let mut invalid_utf8_boundary = 1;
+        assert!(parse_nr_at("é", &mut invalid_utf8_boundary, Position::Major).is_err());
     }
 
     #[test]

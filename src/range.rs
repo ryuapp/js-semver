@@ -285,14 +285,30 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
         .or_else(|| (s.len() != original_len).then_some('+'));
     let core = parse_partial_core(version_core, terminator)?;
 
-    let pre_release = if let Some(pre_separator) = pre_separator {
+    let pre_release = parse_partial_pre_release(s, pre_separator, &core)?;
+
+    Ok(Partial {
+        major: core.major,
+        minor: core.minor,
+        patch: core.patch,
+        pre_release,
+    })
+}
+
+fn parse_partial_pre_release(
+    s: &str,
+    pre_separator: Option<usize>,
+    core: &ParsedPartialCore,
+) -> Result<PreRelease, SemverError> {
+    let mut pre_release = PreRelease::default();
+    if let Some(pre_separator) = pre_separator {
         let pre_part = &s[pre_separator + 1..];
         let parsed = PreRelease::new(pre_part)?;
         if core.has_wildcard {
             if core.component_count < 3 {
                 return Err(SemverErrorKind::UnexpectedCharacterAfterWildcard.into());
             }
-            PreRelease::default()
+            pre_release = PreRelease::default();
         } else {
             if core.minor.is_none() || core.patch.is_none() {
                 let position = if core.minor.is_none() {
@@ -302,18 +318,10 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
                 };
                 return Err(SemverErrorKind::MissingVersionSegment(position).into());
             }
-            parsed
+            pre_release = parsed;
         }
-    } else {
-        PreRelease::default()
-    };
-
-    Ok(Partial {
-        major: core.major,
-        minor: core.minor,
-        patch: core.patch,
-        pre_release,
-    })
+    }
+    Ok(pre_release)
 }
 
 fn strip_build_metadata(s: &str) -> Result<&str, SemverError> {
@@ -1275,6 +1283,7 @@ mod tests {
                 "x.1.2",
                 "unexpected character after wildcard in version range",
             ),
+            ("x1", "unexpected character after wildcard in version range"),
             ("1.0.0!", "unexpected character '!' after patch version"),
             (
                 "1.0.0-alpha!",
@@ -1352,6 +1361,18 @@ mod tests {
     #[test]
     fn helper_count_and_expand_tilde_caret_coverage() {
         assert_eq!(parse_partial("1.2").unwrap().minor, Some(2));
+        let core = ParsedPartialCore {
+            major: Some(1),
+            minor: Some(2),
+            patch: Some(3),
+            component_count: 3,
+            has_wildcard: false,
+        };
+        assert!(
+            parse_partial_pre_release("1.2.3", None, &core)
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(count_whitespace_tokens(b""), 0);
         assert_eq!(count_whitespace_tokens(b">=1.0.0 <2.0.0"), 2);
         assert_eq!(count_whitespace_tokens(b"  >=1.0.0   <2.0.0  "), 2);

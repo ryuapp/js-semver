@@ -180,6 +180,18 @@ mod tests {
                 "missing patch version segment",
             ),
             (
+                SemverErrorKind::MissingVersionSegment(Position::Major),
+                "missing major version segment",
+            ),
+            (
+                SemverErrorKind::MissingVersionSegment(Position::PreRelease),
+                "missing pre-release version segment",
+            ),
+            (
+                SemverErrorKind::MissingVersionSegment(Position::BuildMetadata),
+                "missing build metadata version segment",
+            ),
+            (
                 SemverErrorKind::MissingVersionAfterOperator(">="),
                 "missing version after >=",
             ),
