@@ -30,7 +30,9 @@ pub(crate) enum SemverErrorKind {
 impl fmt::Display for SemverErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnexpectedCharacter(ch) => write!(f, "unexpected character: '{ch}'"),
+            Self::UnexpectedCharacter(ch) => {
+                write!(f, "unexpected character: '{}'", ch.escape_debug())
+            }
             Self::MaxLengthExceeded => f.write_str("maximum length of 256 characters exceeded"),
             Self::MaxSafeIntegerExceeded => f.write_str("number exceeds MAX_SAFE_INTEGER"),
             Self::Empty => f.write_str("empty"),

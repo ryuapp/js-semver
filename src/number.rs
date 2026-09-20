@@ -7,7 +7,7 @@ pub(crate) const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 pub(crate) fn parse_nr(s: &str) -> Result<u64, SemverError> {
     let b = s.as_bytes();
     if b.is_empty() {
-        return Err(SemverErrorKind::Empty.into());
+        return Err(SemverErrorKind::InvalidNumber.into());
     }
     if b.len() > 1 && b[0] == b'0' {
         return Err(SemverErrorKind::LeadingZero.into());
@@ -30,13 +30,16 @@ pub(crate) fn parse_nr(s: &str) -> Result<u64, SemverError> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "std"))]
+    use alloc::string::ToString;
+
     use super::*;
 
     #[test]
     fn parse_nr_api() {
         assert_eq!(parse_nr("0").unwrap(), 0);
         assert_eq!(parse_nr("9007199254740991").unwrap(), MAX_SAFE_INTEGER);
-        assert!(parse_nr("").is_err());
+        assert_eq!(parse_nr("").unwrap_err().to_string(), "invalid number");
         assert!(parse_nr("01").is_err());
         assert!(parse_nr("1a").is_err());
         assert!(parse_nr("9007199254740992").is_err());
