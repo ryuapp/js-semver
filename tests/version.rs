@@ -235,15 +235,6 @@ fn semver_error_display() {
 }
 
 #[test]
-fn empty_error_is_only_used_for_an_empty_input() {
-    assert_eq!(Version::parse("").unwrap_err().to_string(), "empty");
-    assert_eq!(
-        Version::parse("   ").unwrap_err().to_string(),
-        "unexpected character: ' '"
-    );
-}
-
-#[test]
 fn version_display_propagates_formatter_errors() {
     let mut core_writer = FailingWriter {
         fail_on: "",

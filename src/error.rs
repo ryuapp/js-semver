@@ -1,28 +1,35 @@
 use core::fmt;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Position {
+    Major,
+    Minor,
+    Patch,
+    PreRelease,
+    BuildMetadata,
+}
+
 /// A structured semver parse error classification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SemverErrorKind {
-    /// A non-semver suffix or other unexpected character was found.
-    UnexpectedCharacter(char),
+    /// An unexpected character was found while parsing a version component.
+    UnexpectedCharacterWhileParsing(char, Position),
+    /// An unexpected character was found after a version component.
+    UnexpectedCharacterAfter(char, Position),
+    /// A concrete version component followed a wildcard component.
+    UnexpectedCharacterAfterWildcard,
     /// The input exceeded the maximum accepted length.
     MaxLengthExceeded,
     /// The input exceeded `MAX_SAFE_INTEGER`.
-    MaxSafeIntegerExceeded,
+    MaxSafeIntegerExceeded(Position),
     /// The entire input was empty.
     Empty,
-    /// An empty segment was encountered.
-    EmptySegment,
-    /// A partial version ended with a dot.
-    TrailingDot,
-    /// A dot appeared in an unexpected position.
-    UnexpectedDot,
+    /// An empty pre-release or build metadata identifier was encountered.
+    EmptyIdentifierSegment(Position),
     /// A numeric component had a leading zero.
-    LeadingZero,
-    /// A numeric component was invalid.
-    InvalidNumber,
+    LeadingZero(Position),
     /// A required version component was missing.
-    MissingVersionSegment,
+    MissingVersionSegment(Position),
     /// An operator was not followed by a version.
     MissingVersionAfterOperator(&'static str),
 }
@@ -30,21 +37,62 @@ pub(crate) enum SemverErrorKind {
 impl fmt::Display for SemverErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::UnexpectedCharacter(ch) => {
-                write!(f, "unexpected character: '{}'", ch.escape_debug())
+            Self::UnexpectedCharacterWhileParsing(ch, position) => write!(
+                f,
+                "unexpected character '{}' while parsing {}",
+                ch.escape_debug(),
+                position.description()
+            ),
+            Self::UnexpectedCharacterAfter(ch, position) => write!(
+                f,
+                "unexpected character '{}' after {}",
+                ch.escape_debug(),
+                position.description()
+            ),
+            Self::UnexpectedCharacterAfterWildcard => {
+                f.write_str("unexpected character after wildcard in version range")
             }
             Self::MaxLengthExceeded => f.write_str("maximum length of 256 characters exceeded"),
-            Self::MaxSafeIntegerExceeded => f.write_str("number exceeds MAX_SAFE_INTEGER"),
+            Self::MaxSafeIntegerExceeded(position) => write!(
+                f,
+                "number exceeds MAX_SAFE_INTEGER in {}",
+                position.description()
+            ),
             Self::Empty => f.write_str("empty"),
-            Self::EmptySegment => f.write_str("empty segment"),
-            Self::TrailingDot => f.write_str("trailing dot"),
-            Self::UnexpectedDot => f.write_str("unexpected dot"),
-            Self::LeadingZero => f.write_str("leading zero"),
-            Self::InvalidNumber => f.write_str("invalid number"),
-            Self::MissingVersionSegment => f.write_str("missing version segment"),
+            Self::EmptyIdentifierSegment(position) => {
+                write!(f, "empty identifier segment in {}", position.description())
+            }
+            Self::LeadingZero(position) => {
+                write!(f, "invalid leading zero in {}", position.description())
+            }
+            Self::MissingVersionSegment(position) => {
+                write!(f, "missing {} version segment", position.version_name())
+            }
             Self::MissingVersionAfterOperator(operator) => {
                 write!(f, "missing version after {operator}")
             }
+        }
+    }
+}
+
+impl Position {
+    fn description(self) -> &'static str {
+        match self {
+            Self::Major => "major version",
+            Self::Minor => "minor version",
+            Self::Patch => "patch version",
+            Self::PreRelease => "pre-release identifier",
+            Self::BuildMetadata => "build metadata",
+        }
+    }
+
+    fn version_name(self) -> &'static str {
+        match self {
+            Self::Major => "major",
+            Self::Minor => "minor",
+            Self::Patch => "patch",
+            Self::PreRelease => "pre-release",
+            Self::BuildMetadata => "build metadata",
         }
     }
 }
@@ -89,32 +137,47 @@ mod tests {
     #[cfg(not(feature = "std"))]
     use alloc::string::ToString;
 
-    use super::{SemverError, SemverErrorKind};
+    use super::{Position, SemverError, SemverErrorKind};
 
     #[test]
     fn semver_error_kind_display_variants() {
         let cases = [
             (
-                SemverErrorKind::UnexpectedCharacter('x'),
-                "unexpected character: 'x'",
+                SemverErrorKind::UnexpectedCharacterWhileParsing('x', Position::Minor),
+                "unexpected character 'x' while parsing minor version",
+            ),
+            (
+                SemverErrorKind::UnexpectedCharacterAfter('x', Position::Patch),
+                "unexpected character 'x' after patch version",
+            ),
+            (
+                SemverErrorKind::UnexpectedCharacterAfterWildcard,
+                "unexpected character after wildcard in version range",
             ),
             (
                 SemverErrorKind::MaxLengthExceeded,
                 "maximum length of 256 characters exceeded",
             ),
             (
-                SemverErrorKind::MaxSafeIntegerExceeded,
-                "number exceeds MAX_SAFE_INTEGER",
+                SemverErrorKind::MaxSafeIntegerExceeded(Position::Major),
+                "number exceeds MAX_SAFE_INTEGER in major version",
             ),
             (SemverErrorKind::Empty, "empty"),
-            (SemverErrorKind::EmptySegment, "empty segment"),
-            (SemverErrorKind::TrailingDot, "trailing dot"),
-            (SemverErrorKind::UnexpectedDot, "unexpected dot"),
-            (SemverErrorKind::LeadingZero, "leading zero"),
-            (SemverErrorKind::InvalidNumber, "invalid number"),
             (
-                SemverErrorKind::MissingVersionSegment,
-                "missing version segment",
+                SemverErrorKind::EmptyIdentifierSegment(Position::PreRelease),
+                "empty identifier segment in pre-release identifier",
+            ),
+            (
+                SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata),
+                "empty identifier segment in build metadata",
+            ),
+            (
+                SemverErrorKind::LeadingZero(Position::PreRelease),
+                "invalid leading zero in pre-release identifier",
+            ),
+            (
+                SemverErrorKind::MissingVersionSegment(Position::Patch),
+                "missing patch version segment",
             ),
             (
                 SemverErrorKind::MissingVersionAfterOperator(">="),
