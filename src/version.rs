@@ -173,6 +173,9 @@ impl FromStr for Version {
 // --------------------------------------------------------------------------
 
 fn parse_version(s: &str) -> Result<Version, SemverError> {
+    if s.is_empty() {
+        return Err(SemverErrorKind::Empty.into());
+    }
     if s.len() <= MAX_LENGTH {
         if let Some(version) = parse_fast_version(s) {
             return Ok(version);
@@ -186,7 +189,8 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
     }
     let raw = s.trim();
     if raw.is_empty() {
-        return Err(SemverErrorKind::Empty.into());
+        let unexpected = s.chars().next().unwrap_or('\0');
+        return Err(SemverErrorKind::UnexpectedCharacter(unexpected).into());
     }
     if raw.len() > MAX_LENGTH {
         return Err(SemverErrorKind::MaxLengthExceeded.into());
