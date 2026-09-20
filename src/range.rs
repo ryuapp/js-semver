@@ -4,9 +4,9 @@ use alloc::{vec, vec::Vec};
 use core::fmt;
 use core::str::FromStr;
 
-use crate::error::SemverErrorKind;
+use crate::error::{Position, SemverErrorKind};
 use crate::identifier::{BuildMetadata, PreRelease, validate_build_metadata};
-use crate::number::{MAX_SAFE_INTEGER, parse_nr};
+use crate::number::{MAX_SAFE_INTEGER, MAX_SAFE_INTEGER_DIGITS, parse_nr};
 use crate::version::{Version, compare_core_and_prerelease};
 use crate::{MAX_LENGTH, SemverError};
 
@@ -241,6 +241,14 @@ struct Partial {
     pre_release: PreRelease,
 }
 
+struct ParsedPartialCore {
+    major: Option<u64>,
+    minor: Option<u64>,
+    patch: Option<u64>,
+    component_count: usize,
+    has_wildcard: bool,
+}
+
 impl Partial {
     fn floor(self) -> Version {
         Version {
@@ -265,68 +273,55 @@ fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     }
     let original_len = s.len();
     let (s, pre_separator) = strip_build_metadata_and_find_prerelease(s)?;
-    if s.is_empty() || s.starts_with('.') {
-        return Err(SemverErrorKind::MissingVersionSegment.into());
-    }
     if s.len() != original_len {
         if let Some(partial) = parse_simple_partial(s) {
             return Ok(partial);
         }
     }
-    let Some(pre_separator) = pre_separator else {
-        return Err(SemverErrorKind::InvalidNumber.into());
-    };
-    let bytes = s.as_bytes();
-    let version_end = pre_separator;
+    let version_end = pre_separator.unwrap_or(s.len());
     let version_core = &s[..version_end];
-    let pre_part = &s[pre_separator + 1..];
+    let terminator = pre_separator
+        .map(|_| '-')
+        .or_else(|| (s.len() != original_len).then_some('+'));
+    let core = parse_partial_core(version_core, terminator)?;
 
-    if version_core.is_empty() {
-        return Err(SemverErrorKind::MissingVersionSegment.into());
-    }
-    if bytes.get(version_end.wrapping_sub(1)) == Some(&b'.') {
-        return Err(SemverErrorKind::TrailingDot.into());
-    }
-
-    let (dot1, dot2) = find_component_dots(bytes, version_end, s)?;
-
-    let major_part = if let Some(end) = dot1 {
-        &s[..end]
-    } else {
-        version_core
-    };
-    let major = parse_xr(major_part)?;
-    let minor = match (dot1, dot2) {
-        (Some(start), Some(end)) => parse_xr(&s[start + 1..end])?,
-        (Some(start), None) => parse_xr(&s[start + 1..version_end])?,
-        (None, _) => None,
-    };
-    let patch = match dot2 {
-        Some(start) => parse_xr(&s[start + 1..version_end])?,
-        None => None,
-    };
-
-    let pre_release = if pre_part.is_empty() || pre_part.ends_with('.') {
-        return Err(SemverErrorKind::EmptySegment.into());
-    } else if dot1.is_some()
-        && dot2.is_some()
-        && (major.is_none() || minor.is_none() || patch.is_none())
-    {
-        PreRelease::new(pre_part)?;
-        PreRelease::default()
-    } else {
-        if minor.is_none() || patch.is_none() {
-            return Err(SemverErrorKind::MissingVersionSegment.into());
-        }
-        PreRelease::new(pre_part)?
-    };
+    let pre_release = parse_partial_pre_release(s, pre_separator, &core)?;
 
     Ok(Partial {
-        major,
-        minor,
-        patch,
+        major: core.major,
+        minor: core.minor,
+        patch: core.patch,
         pre_release,
     })
+}
+
+fn parse_partial_pre_release(
+    s: &str,
+    pre_separator: Option<usize>,
+    core: &ParsedPartialCore,
+) -> Result<PreRelease, SemverError> {
+    let mut pre_release = PreRelease::default();
+    if let Some(pre_separator) = pre_separator {
+        let pre_part = &s[pre_separator + 1..];
+        let parsed = PreRelease::new(pre_part)?;
+        if core.has_wildcard {
+            if core.component_count < 3 {
+                return Err(SemverErrorKind::UnexpectedCharacterAfterWildcard.into());
+            }
+            pre_release = PreRelease::default();
+        } else {
+            if core.minor.is_none() || core.patch.is_none() {
+                let position = if core.minor.is_none() {
+                    Position::Minor
+                } else {
+                    Position::Patch
+                };
+                return Err(SemverErrorKind::MissingVersionSegment(position).into());
+            }
+            pre_release = parsed;
+        }
+    }
+    Ok(pre_release)
 }
 
 fn strip_build_metadata(s: &str) -> Result<&str, SemverError> {
@@ -335,7 +330,7 @@ fn strip_build_metadata(s: &str) -> Result<&str, SemverError> {
     };
     let build = &s[plus + 1..];
     if build.is_empty() {
-        return Err(SemverErrorKind::EmptySegment.into());
+        return Err(SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata).into());
     }
     validate_build_metadata(build)?;
     Ok(&s[..plus])
@@ -349,7 +344,9 @@ fn strip_build_metadata_and_find_prerelease(s: &str) -> Result<(&str, Option<usi
             b'+' => {
                 let build = &s[pos + 1..];
                 if build.is_empty() {
-                    return Err(SemverErrorKind::EmptySegment.into());
+                    return Err(
+                        SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata).into(),
+                    );
                 }
                 validate_build_metadata(build)?;
                 return Ok((&s[..pos], pre_separator));
@@ -403,7 +400,7 @@ fn parse_simple_component(bytes: &[u8], start: usize) -> Option<(Option<u64>, us
             let mut pos = start;
             let mut value = 0u64;
             while let Some(digit @ b'0'..=b'9') = bytes.get(pos).copied() {
-                if pos - start == 16 {
+                if pos - start == MAX_SAFE_INTEGER_DIGITS {
                     return None;
                 }
                 value = value * 10 + u64::from(digit - b'0');
@@ -415,10 +412,82 @@ fn parse_simple_component(bytes: &[u8], start: usize) -> Option<(Option<u64>, us
     }
 }
 
-fn parse_xr(s: &str) -> Result<Option<u64>, SemverError> {
-    match s {
-        "" | "*" | "x" | "X" => Ok(None),
-        _ => Ok(Some(parse_nr(s)?)),
+fn parse_partial_core(
+    core: &str,
+    terminator: Option<char>,
+) -> Result<ParsedPartialCore, SemverError> {
+    let mut segments = core.split('.');
+    let major_segment = segments.next().unwrap_or_default();
+    let minor_segment = segments.next();
+    let patch_segment = segments.next();
+    let has_extra_segment = segments.next().is_some();
+
+    let (major, major_wildcard) = parse_partial_component(
+        major_segment,
+        Position::Major,
+        minor_segment.is_none(),
+        terminator,
+    )?;
+    let (minor, minor_wildcard) = if let Some(segment) = minor_segment {
+        parse_partial_component(
+            segment,
+            Position::Minor,
+            patch_segment.is_none(),
+            terminator,
+        )?
+    } else {
+        (None, false)
+    };
+    let (patch, patch_wildcard) = if let Some(segment) = patch_segment {
+        parse_partial_component(segment, Position::Patch, !has_extra_segment, terminator)?
+    } else {
+        (None, false)
+    };
+
+    if has_extra_segment {
+        return Err(SemverErrorKind::UnexpectedCharacterAfter('.', Position::Patch).into());
+    }
+    if (major_wildcard && (minor.is_some() || patch.is_some()))
+        || (minor_wildcard && patch.is_some())
+    {
+        return Err(SemverErrorKind::UnexpectedCharacterAfterWildcard.into());
+    }
+
+    let component_count =
+        1 + usize::from(minor_segment.is_some()) + usize::from(patch_segment.is_some());
+    Ok(ParsedPartialCore {
+        major,
+        minor,
+        patch,
+        component_count,
+        has_wildcard: major_wildcard || minor_wildcard || patch_wildcard,
+    })
+}
+
+fn parse_partial_component(
+    segment: &str,
+    position: Position,
+    is_last: bool,
+    terminator: Option<char>,
+) -> Result<(Option<u64>, bool), SemverError> {
+    if segment.is_empty() {
+        if is_last {
+            if let Some(terminator) = terminator {
+                return Err(
+                    SemverErrorKind::UnexpectedCharacterWhileParsing(terminator, position).into(),
+                );
+            }
+            return Err(SemverErrorKind::MissingVersionSegment(position).into());
+        }
+        return Err(SemverErrorKind::UnexpectedCharacterWhileParsing('.', position).into());
+    }
+
+    match segment {
+        "*" | "x" | "X" => Ok((None, true)),
+        _ if matches!(segment.as_bytes().first(), Some(b'*' | b'x' | b'X')) => {
+            Err(SemverErrorKind::UnexpectedCharacterAfterWildcard.into())
+        }
+        _ => Ok((Some(parse_nr(segment, position)?), false)),
     }
 }
 
@@ -445,32 +514,6 @@ fn has_fully_qualified_numeric_core_after_full_strip(s: &str) -> bool {
 // --------------------------------------------------------------------------
 // Comparator construction helpers (internal)
 // --------------------------------------------------------------------------
-
-fn find_component_dots(
-    bytes: &[u8],
-    version_end: usize,
-    _raw: &str,
-) -> Result<(Option<usize>, Option<usize>), SemverError> {
-    let mut first = None;
-    let mut second = None;
-    let mut pos = 0;
-    while pos < version_end {
-        if bytes[pos] == b'.' {
-            if pos == 0 || bytes[pos - 1] == b'.' {
-                return Err(SemverErrorKind::EmptySegment.into());
-            }
-            if first.is_none() {
-                first = Some(pos);
-            } else if second.is_none() {
-                second = Some(pos);
-            } else {
-                return Err(SemverErrorKind::UnexpectedDot.into());
-            }
-        }
-        pos += 1;
-    }
-    Ok((first, second))
-}
 
 fn version_with_pre_release(
     major: u64,
@@ -531,9 +574,9 @@ fn comparator_lt_upper_bound(major: u64, minor: u64, patch: u64) -> Comparator {
     ))
 }
 
-fn next_component(value: u64) -> Result<u64, SemverError> {
+fn next_component(value: u64, position: Position) -> Result<u64, SemverError> {
     if value >= MAX_SAFE_INTEGER {
-        return Err(SemverErrorKind::MaxSafeIntegerExceeded.into());
+        return Err(SemverErrorKind::MaxSafeIntegerExceeded(position).into());
     }
     Ok(value + 1)
 }
@@ -552,19 +595,28 @@ fn expand_tilde_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), Semver
                 out,
                 comparator_gte(version_with_pre_release(maj, 0, 0, PreRelease::default())),
             );
-            push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
+            push_canonical_comparator(
+                out,
+                comparator_lt_upper_bound(next_component(maj, Position::Major)?, 0, 0),
+            );
         }
         (Some(maj), Some(mnr), None) => {
             push_canonical_comparator(
                 out,
                 comparator_gte(version_with_pre_release(maj, mnr, 0, PreRelease::default())),
             );
-            push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
+            push_canonical_comparator(
+                out,
+                comparator_lt_upper_bound(maj, next_component(mnr, Position::Minor)?, 0),
+            );
         }
         (Some(maj), Some(mnr), Some(patch)) => {
             let floor = version_with_pre_release(maj, mnr, patch, p.pre_release);
             push_canonical_comparator(out, comparator_gte(floor));
-            push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
+            push_canonical_comparator(
+                out,
+                comparator_lt_upper_bound(maj, next_component(mnr, Position::Minor)?, 0),
+            );
         }
     }
     Ok(())
@@ -587,7 +639,10 @@ fn expand_caret_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), Semver
                 out,
                 comparator_gte(version_with_pre_release(maj, 0, 0, PreRelease::default())),
             );
-            push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
+            push_canonical_comparator(
+                out,
+                comparator_lt_upper_bound(next_component(maj, Position::Major)?, 0, 0),
+            );
         }
         (Some(maj), Some(mnr), None) => {
             if maj > 0 {
@@ -597,7 +652,7 @@ fn expand_caret_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), Semver
                 );
                 push_canonical_comparator(
                     out,
-                    comparator_lt_upper_bound(next_component(maj)?, 0, 0),
+                    comparator_lt_upper_bound(next_component(maj, Position::Major)?, 0, 0),
                 );
             } else if mnr > 0 {
                 push_canonical_comparator(
@@ -606,7 +661,7 @@ fn expand_caret_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), Semver
                 );
                 push_canonical_comparator(
                     out,
-                    comparator_lt_upper_bound(0, next_component(mnr)?, 0),
+                    comparator_lt_upper_bound(0, next_component(mnr, Position::Minor)?, 0),
                 );
             } else {
                 push_canonical_comparator(
@@ -622,17 +677,17 @@ fn expand_caret_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), Semver
             if maj > 0 {
                 push_canonical_comparator(
                     out,
-                    comparator_lt_upper_bound(next_component(maj)?, 0, 0),
+                    comparator_lt_upper_bound(next_component(maj, Position::Major)?, 0, 0),
                 );
             } else if mnr > 0 {
                 push_canonical_comparator(
                     out,
-                    comparator_lt_upper_bound(0, next_component(mnr)?, 0),
+                    comparator_lt_upper_bound(0, next_component(mnr, Position::Minor)?, 0),
                 );
             } else {
                 push_canonical_comparator(
                     out,
-                    comparator_lt_upper_bound(0, 0, next_component(patch)?),
+                    comparator_lt_upper_bound(0, 0, next_component(patch, Position::Patch)?),
                 );
             }
         }
@@ -654,7 +709,7 @@ fn expand_primitive_into(
     p: Partial,
 ) -> Result<(), SemverError> {
     if (p.major.is_none() && p.minor.is_some()) || (p.minor.is_none() && p.patch.is_some()) {
-        return Err(SemverErrorKind::MissingVersionSegment.into());
+        return Err(SemverErrorKind::UnexpectedCharacterAfterWildcard.into());
     }
     match op {
         None | Some(Operator::Equal) => expand_equal_primitive(out, p)?,
@@ -681,14 +736,20 @@ fn expand_equal_primitive(out: &mut Vec<Comparator>, p: Partial) -> Result<(), S
                 out,
                 comparator_gte(version_with_pre_release(maj, 0, 0, PreRelease::default())),
             );
-            push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
+            push_canonical_comparator(
+                out,
+                comparator_lt_upper_bound(next_component(maj, Position::Major)?, 0, 0),
+            );
         }
         (Some(maj), Some(mnr), None) => {
             push_canonical_comparator(
                 out,
                 comparator_gte(version_with_pre_release(maj, mnr, 0, PreRelease::default())),
             );
-            push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
+            push_canonical_comparator(
+                out,
+                comparator_lt_upper_bound(maj, next_component(mnr, Position::Minor)?, 0),
+            );
         }
         (Some(maj), Some(mnr), Some(patch)) => {
             push_canonical_comparator(out, comparator_eq(version_from_partial(p, maj, mnr, patch)));
@@ -704,7 +765,7 @@ fn expand_greater_than_primitive(out: &mut Vec<Comparator>, p: Partial) -> Resul
             push_canonical_comparator(
                 out,
                 comparator_gte(version_with_pre_release(
-                    next_component(maj)?,
+                    next_component(maj, Position::Major)?,
                     0,
                     0,
                     PreRelease::default(),
@@ -716,7 +777,7 @@ fn expand_greater_than_primitive(out: &mut Vec<Comparator>, p: Partial) -> Resul
                 out,
                 comparator_gte(version_with_pre_release(
                     maj,
-                    next_component(mnr)?,
+                    next_component(mnr, Position::Minor)?,
                     0,
                     PreRelease::default(),
                 )),
@@ -775,10 +836,16 @@ fn expand_less_than_or_equal_primitive(
     match (p.major, p.minor, p.patch) {
         (None, _, _) => {}
         (Some(maj), None, _) => {
-            push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
+            push_canonical_comparator(
+                out,
+                comparator_lt_upper_bound(next_component(maj, Position::Major)?, 0, 0),
+            );
         }
         (Some(maj), Some(mnr), None) => {
-            push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
+            push_canonical_comparator(
+                out,
+                comparator_lt_upper_bound(maj, next_component(mnr, Position::Minor)?, 0),
+            );
         }
         (Some(maj), Some(mnr), Some(patch)) => {
             push_canonical_comparator(
@@ -807,10 +874,16 @@ fn expand_hyphen_into(
     match (b.major, b.minor, b.patch) {
         (None, _, _) => {}
         (Some(maj), None, _) => {
-            push_canonical_comparator(out, comparator_lt_upper_bound(next_component(maj)?, 0, 0));
+            push_canonical_comparator(
+                out,
+                comparator_lt_upper_bound(next_component(maj, Position::Major)?, 0, 0),
+            );
         }
         (Some(maj), Some(mnr), None) => {
-            push_canonical_comparator(out, comparator_lt_upper_bound(maj, next_component(mnr)?, 0));
+            push_canonical_comparator(
+                out,
+                comparator_lt_upper_bound(maj, next_component(mnr, Position::Minor)?, 0),
+            );
         }
         (Some(maj), Some(mnr), Some(patch)) => {
             let ver = version_with_pre_release(maj, mnr, patch, b.pre_release);
@@ -1157,6 +1230,115 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_errors_include_the_cause_and_position() {
+        let cases = [
+            ("+", "empty identifier segment in build metadata"),
+            ("1.", "missing minor version segment"),
+            (
+                "1..2",
+                "unexpected character '.' while parsing minor version",
+            ),
+            (
+                "1...3",
+                "unexpected character '.' while parsing minor version",
+            ),
+            (
+                "1.2..",
+                "unexpected character '.' while parsing patch version",
+            ),
+            ("1.2.3.4", "unexpected character '.' after patch version"),
+            (
+                "1.2.3.4-alpha",
+                "unexpected character '.' after patch version",
+            ),
+            ("1.2.3.", "unexpected character '.' after patch version"),
+            (".1", "unexpected character '.' while parsing major version"),
+            ("1-alpha", "missing minor version segment"),
+            ("1.2-alpha", "missing patch version segment"),
+            (
+                "1.2.-alpha",
+                "unexpected character '-' while parsing patch version",
+            ),
+            (
+                "1.0.0-",
+                "empty identifier segment in pre-release identifier",
+            ),
+            ("1.0.0+", "empty identifier segment in build metadata"),
+            ("01.2.3", "invalid leading zero in major version"),
+            ("1.02.3", "invalid leading zero in minor version"),
+            ("1.2.03", "invalid leading zero in patch version"),
+            (
+                "abc",
+                "unexpected character 'a' while parsing major version",
+            ),
+            (
+                ">>1.0.0",
+                "unexpected character '>' while parsing major version",
+            ),
+            (
+                "1.x.5",
+                "unexpected character after wildcard in version range",
+            ),
+            (
+                "x.1.2",
+                "unexpected character after wildcard in version range",
+            ),
+            ("x1", "unexpected character after wildcard in version range"),
+            ("1.0.0!", "unexpected character '!' after patch version"),
+            (
+                "1.0.0-alpha!",
+                "unexpected character '!' after pre-release identifier",
+            ),
+            (
+                "1.0.0+build!",
+                "unexpected character '!' after build metadata",
+            ),
+            (
+                ">=a.b.c",
+                "unexpected character 'a' while parsing major version",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                Range::parse(input).unwrap_err().to_string(),
+                expected,
+                "input: {input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn max_safe_integer_errors_include_the_position() {
+        let cases = [
+            (
+                "9007199254740992.0.0",
+                "number exceeds MAX_SAFE_INTEGER in major version",
+            ),
+            (
+                "~9007199254740991",
+                "number exceeds MAX_SAFE_INTEGER in major version",
+            ),
+            (
+                "~1.9007199254740991",
+                "number exceeds MAX_SAFE_INTEGER in minor version",
+            ),
+            (
+                "^0.0.9007199254740991",
+                "number exceeds MAX_SAFE_INTEGER in patch version",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            assert_eq!(
+                Range::parse(input).unwrap_err().to_string(),
+                expected,
+                "input: {input:?}"
+            );
+        }
+    }
+
+    #[test]
     fn try_hyphen_rejects_non_hyphen_forms() {
         assert!(try_hyphen(">=1.0.0 - 2.0.0").unwrap().is_none());
         assert!(try_hyphen("1.0.0 - <=2.0.0").unwrap().is_none());
@@ -1179,6 +1361,18 @@ mod tests {
     #[test]
     fn helper_count_and_expand_tilde_caret_coverage() {
         assert_eq!(parse_partial("1.2").unwrap().minor, Some(2));
+        let core = ParsedPartialCore {
+            major: Some(1),
+            minor: Some(2),
+            patch: Some(3),
+            component_count: 3,
+            has_wildcard: false,
+        };
+        assert!(
+            parse_partial_pre_release("1.2.3", None, &core)
+                .unwrap()
+                .is_empty()
+        );
         assert_eq!(count_whitespace_tokens(b""), 0);
         assert_eq!(count_whitespace_tokens(b">=1.0.0 <2.0.0"), 2);
         assert_eq!(count_whitespace_tokens(b"  >=1.0.0   <2.0.0  "), 2);

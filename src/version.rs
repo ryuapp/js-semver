@@ -2,9 +2,9 @@ use core::cmp::Ordering;
 use core::fmt;
 use core::str::FromStr;
 
-use crate::error::SemverErrorKind;
+use crate::error::{Position, SemverErrorKind};
 use crate::identifier::{BuildMetadata, PreRelease};
-use crate::number::MAX_SAFE_INTEGER;
+use crate::number::{MAX_SAFE_INTEGER, MAX_SAFE_INTEGER_DIGITS};
 use crate::{MAX_LENGTH, SemverError};
 
 // --------------------------------------------------------------------------
@@ -32,11 +32,11 @@ use crate::{MAX_LENGTH, SemverError};
 /// ```
 #[derive(Debug, Clone, Eq)]
 pub struct Version {
-    /// The major version number.
+    /// The major version.
     pub major: u64,
-    /// The minor version number.
+    /// The minor version.
     pub minor: u64,
-    /// The patch version number.
+    /// The patch version.
     pub patch: u64,
     /// The pre-release identifiers, if any.
     pub pre_release: PreRelease,
@@ -173,9 +173,6 @@ impl FromStr for Version {
 // --------------------------------------------------------------------------
 
 fn parse_version(s: &str) -> Result<Version, SemverError> {
-    if s.is_empty() {
-        return Err(SemverErrorKind::Empty.into());
-    }
     if s.len() <= MAX_LENGTH {
         if let Some(version) = parse_fast_version(s) {
             return Ok(version);
@@ -189,8 +186,14 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
     }
     let raw = s.trim();
     if raw.is_empty() {
-        let unexpected = s.chars().next().unwrap_or('\0');
-        return Err(SemverErrorKind::UnexpectedCharacter(unexpected).into());
+        return match s.chars().next() {
+            Some(unexpected) => Err(SemverErrorKind::UnexpectedCharacterWhileParsing(
+                unexpected,
+                Position::Major,
+            )
+            .into()),
+            None => Err(SemverErrorKind::Empty.into()),
+        };
     }
     if raw.len() > MAX_LENGTH {
         return Err(SemverErrorKind::MaxLengthExceeded.into());
@@ -201,17 +204,17 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
     let mut pos = usize::from(matches!(b.first(), Some(b'v')));
 
     // Parse major.minor.patch in a single forward scan
-    let major = parse_nr_at(b, &mut pos)?;
+    let major = parse_nr_at(raw, &mut pos, Position::Major)?;
     if b.get(pos) != Some(&b'.') {
-        return Err(SemverErrorKind::MissingVersionSegment.into());
+        return Err(SemverErrorKind::MissingVersionSegment(Position::Minor).into());
     }
     pos += 1;
-    let minor = parse_nr_at(b, &mut pos)?;
+    let minor = parse_nr_at(raw, &mut pos, Position::Minor)?;
     if b.get(pos) != Some(&b'.') {
-        return Err(SemverErrorKind::MissingVersionSegment.into());
+        return Err(SemverErrorKind::MissingVersionSegment(Position::Patch).into());
     }
     pos += 1;
-    let patch = parse_nr_at(b, &mut pos)?;
+    let patch = parse_nr_at(raw, &mut pos, Position::Patch)?;
 
     // Optional pre-release
     let pre_release = if b.get(pos) == Some(&b'-') {
@@ -222,7 +225,7 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
         }
         let pre_str = &raw[start..pos];
         if pre_str.is_empty() {
-            return Err(SemverErrorKind::EmptySegment.into());
+            return Err(SemverErrorKind::EmptyIdentifierSegment(Position::PreRelease).into());
         }
         PreRelease::new(pre_str)?
     } else {
@@ -233,11 +236,15 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
     let build = if b.get(pos) == Some(&b'+') {
         pos += 1;
         BuildMetadata::new(&raw[pos..])?
-    } else if pos == b.len() {
-        BuildMetadata::default()
     } else {
-        let unexpected = raw[pos..].chars().next().unwrap_or('\0');
-        return Err(SemverErrorKind::UnexpectedCharacter(unexpected).into());
+        match raw[pos..].chars().next() {
+            Some(unexpected) => {
+                return Err(
+                    SemverErrorKind::UnexpectedCharacterAfter(unexpected, Position::Patch).into(),
+                );
+            }
+            None => BuildMetadata::default(),
+        }
     };
 
     Ok(Version {
@@ -344,7 +351,7 @@ fn parse_simple_core_number(bytes: &[u8], pos: &mut usize) -> Option<u64> {
 
     let mut value = 0u64;
     while let Some(digit @ b'0'..=b'9') = bytes.get(*pos).copied() {
-        if *pos - start == 16 {
+        if *pos - start == MAX_SAFE_INTEGER_DIGITS {
             return None;
         }
         value = value * 10 + u64::from(digit - b'0');
@@ -353,26 +360,33 @@ fn parse_simple_core_number(bytes: &[u8], pos: &mut usize) -> Option<u64> {
     (value <= MAX_SAFE_INTEGER).then_some(value)
 }
 
-/// Parse a decimal integer from `b` starting at `*pos`, advancing `*pos` past the digits.
-fn parse_nr_at(b: &[u8], pos: &mut usize) -> Result<u64, SemverError> {
+/// Parse a decimal integer from `input` starting at `*pos`, advancing past the digits.
+fn parse_nr_at(input: &str, pos: &mut usize, position: Position) -> Result<u64, SemverError> {
+    let b = input.as_bytes();
     let start = *pos;
-    if start >= b.len() || !b[start].is_ascii_digit() {
-        return Err(SemverErrorKind::InvalidNumber.into());
+    if start >= b.len() {
+        return Err(SemverErrorKind::MissingVersionSegment(position).into());
+    }
+    if !b[start].is_ascii_digit() {
+        let Some(unexpected) = input.get(start..).and_then(|tail| tail.chars().next()) else {
+            return Err(SemverErrorKind::MissingVersionSegment(position).into());
+        };
+        return Err(SemverErrorKind::UnexpectedCharacterWhileParsing(unexpected, position).into());
     }
     // Leading-zero check
     if b[start] == b'0' && b.get(start + 1).is_some_and(u8::is_ascii_digit) {
-        return Err(SemverErrorKind::LeadingZero.into());
+        return Err(SemverErrorKind::LeadingZero(position).into());
     }
     let mut value = 0u64;
     while let Some(&digit) = b.get(*pos).filter(|digit| digit.is_ascii_digit()) {
-        if *pos - start == 16 {
-            return Err(SemverErrorKind::MaxSafeIntegerExceeded.into());
+        if *pos - start == MAX_SAFE_INTEGER_DIGITS {
+            return Err(SemverErrorKind::MaxSafeIntegerExceeded(position).into());
         }
         value = value * 10 + u64::from(digit - b'0');
         *pos += 1;
     }
     if value > MAX_SAFE_INTEGER {
-        return Err(SemverErrorKind::MaxSafeIntegerExceeded.into());
+        return Err(SemverErrorKind::MaxSafeIntegerExceeded(position).into());
     }
     Ok(value)
 }
@@ -399,22 +413,32 @@ pub(crate) fn compare_core_and_prerelease(left: &Version, right: &Version) -> Or
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "std"))]
+    use alloc::string::ToString;
+
     use super::{Version, parse_nr_at};
+    use crate::error::Position;
     use crate::number::MAX_SAFE_INTEGER;
 
     #[test]
     fn parse_nr_at_propagates_core_number_parse_errors() {
-        let bytes = b"9007199254740992";
+        let input = "9007199254740992";
         let mut pos = 0;
-        assert!(parse_nr_at(bytes, &mut pos).is_err());
+        assert!(parse_nr_at(input, &mut pos, Position::Major).is_err());
+
+        let mut invalid_utf8_boundary = 1;
+        assert!(parse_nr_at("é", &mut invalid_utf8_boundary, Position::Major).is_err());
     }
 
     #[test]
     fn parse_nr_at_parses_max_safe_integer() {
-        let bytes = b"9007199254740991";
+        let input = "9007199254740991";
         let mut pos = 0;
-        assert_eq!(parse_nr_at(bytes, &mut pos).unwrap(), MAX_SAFE_INTEGER);
-        assert_eq!(pos, bytes.len());
+        assert_eq!(
+            parse_nr_at(input, &mut pos, Position::Major).unwrap(),
+            MAX_SAFE_INTEGER
+        );
+        assert_eq!(pos, input.len());
     }
 
     #[test]
@@ -424,6 +448,77 @@ mod tests {
         assert_eq!(
             Version::parse("\u{2003}1.2.3\u{2003}").unwrap(),
             Version::new(1, 2, 3)
+        );
+    }
+
+    #[test]
+    fn core_version_errors_include_the_position() {
+        assert_eq!(
+            Version::parse("1..3").unwrap_err().to_string(),
+            "unexpected character '.' while parsing minor version"
+        );
+        assert_eq!(
+            Version::parse("1.a.3").unwrap_err().to_string(),
+            "unexpected character 'a' while parsing minor version"
+        );
+        assert_eq!(
+            Version::parse("1.2.a").unwrap_err().to_string(),
+            "unexpected character 'a' while parsing patch version"
+        );
+        assert_eq!(
+            Version::parse("1").unwrap_err().to_string(),
+            "missing minor version segment"
+        );
+        assert_eq!(
+            Version::parse("1.2").unwrap_err().to_string(),
+            "missing patch version segment"
+        );
+        assert_eq!(
+            Version::parse("01.2.3").unwrap_err().to_string(),
+            "invalid leading zero in major version"
+        );
+        assert_eq!(
+            Version::parse("1.02.3").unwrap_err().to_string(),
+            "invalid leading zero in minor version"
+        );
+        assert_eq!(
+            Version::parse("1.2.03").unwrap_err().to_string(),
+            "invalid leading zero in patch version"
+        );
+        assert_eq!(
+            Version::parse("9007199254740992.0.0")
+                .unwrap_err()
+                .to_string(),
+            "number exceeds MAX_SAFE_INTEGER in major version"
+        );
+        assert_eq!(
+            Version::parse("1.2.3!").unwrap_err().to_string(),
+            "unexpected character '!' after patch version"
+        );
+    }
+
+    #[test]
+    fn empty_error_is_only_used_for_an_empty_version_input() {
+        assert_eq!(Version::parse("").unwrap_err().to_string(), "empty");
+        assert_eq!(
+            Version::parse("   ").unwrap_err().to_string(),
+            "unexpected character ' ' while parsing major version"
+        );
+        assert_eq!(
+            Version::parse("1.2.3-").unwrap_err().to_string(),
+            "empty identifier segment in pre-release identifier"
+        );
+        assert_eq!(
+            Version::parse("1.2.3+").unwrap_err().to_string(),
+            "empty identifier segment in build metadata"
+        );
+        assert_eq!(
+            Version::parse("1.2.3-alpha..1").unwrap_err().to_string(),
+            "empty identifier segment in pre-release identifier"
+        );
+        assert_eq!(
+            Version::parse("1.2.3+build..1").unwrap_err().to_string(),
+            "empty identifier segment in build metadata"
         );
     }
 }

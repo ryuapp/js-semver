@@ -6,7 +6,7 @@ use core::fmt;
 use core::str::FromStr;
 
 use crate::SemverError;
-use crate::error::SemverErrorKind;
+use crate::error::{Position, SemverErrorKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// A parsed pre-release identifier list such as `alpha.1`.
@@ -34,7 +34,7 @@ impl PreRelease {
     /// Returns [`SemverError`] if `s` is not valid pre-release metadata.
     pub fn new(s: &str) -> Result<Self, SemverError> {
         if s.is_empty() {
-            return Err(SemverErrorKind::Empty.into());
+            return Err(SemverErrorKind::EmptyIdentifierSegment(Position::PreRelease).into());
         }
         validate_prerelease(s)?;
         Ok(Self(Box::from(s)))
@@ -112,7 +112,7 @@ impl BuildMetadata {
     /// Returns [`SemverError`] if `s` is not valid build metadata.
     pub fn new(s: &str) -> Result<Self, SemverError> {
         if s.is_empty() {
-            return Err(SemverErrorKind::Empty.into());
+            return Err(SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata).into());
         }
         validate_build_metadata(s)?;
         Ok(Self(Box::from(s)))
@@ -229,17 +229,22 @@ fn validate_prerelease(s: &str) -> Result<(), SemverError> {
     let mut segment_start = 0;
     let mut all_digits = true;
 
-    for (pos, &byte) in bytes.iter().enumerate() {
-        match byte {
-            b'.' => {
+    for (pos, ch) in s.char_indices() {
+        match ch {
+            '.' => {
                 validate_prerelease_segment(bytes, segment_start, pos, all_digits)?;
                 segment_start = pos + 1;
                 all_digits = true;
             }
-            b'0'..=b'9' => {}
-            b'A'..=b'Z' | b'a'..=b'z' | b'-' => all_digits = false,
+            '0'..='9' => {}
+            'A'..='Z' | 'a'..='z' | '-' => all_digits = false,
             _ => {
-                return Err(SemverErrorKind::UnexpectedCharacter(char::from(byte)).into());
+                let kind = if pos == segment_start {
+                    SemverErrorKind::UnexpectedCharacterWhileParsing(ch, Position::PreRelease)
+                } else {
+                    SemverErrorKind::UnexpectedCharacterAfter(ch, Position::PreRelease)
+                };
+                return Err(kind.into());
             }
         }
     }
@@ -254,10 +259,10 @@ fn validate_prerelease_segment(
     all_digits: bool,
 ) -> Result<(), SemverError> {
     if start == end {
-        return Err(SemverErrorKind::EmptySegment.into());
+        return Err(SemverErrorKind::EmptyIdentifierSegment(Position::PreRelease).into());
     }
     if all_digits && end - start > 1 && bytes[start] == b'0' {
-        return Err(SemverErrorKind::LeadingZero.into());
+        return Err(SemverErrorKind::LeadingZero(Position::PreRelease).into());
     }
     Ok(())
 }
@@ -266,23 +271,30 @@ pub(crate) fn validate_build_metadata(s: &str) -> Result<(), SemverError> {
     let bytes = s.as_bytes();
     let mut segment_start = 0;
 
-    for (pos, &byte) in bytes.iter().enumerate() {
-        match byte {
-            b'.' => {
+    for (pos, ch) in s.char_indices() {
+        match ch {
+            '.' => {
                 if pos == segment_start {
-                    return Err(SemverErrorKind::EmptySegment.into());
+                    return Err(
+                        SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata).into(),
+                    );
                 }
                 segment_start = pos + 1;
             }
-            b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'-' => {}
+            '0'..='9' | 'A'..='Z' | 'a'..='z' | '-' => {}
             _ => {
-                return Err(SemverErrorKind::UnexpectedCharacter(char::from(byte)).into());
+                let kind = if pos == segment_start {
+                    SemverErrorKind::UnexpectedCharacterWhileParsing(ch, Position::BuildMetadata)
+                } else {
+                    SemverErrorKind::UnexpectedCharacterAfter(ch, Position::BuildMetadata)
+                };
+                return Err(kind.into());
             }
         }
     }
 
     if segment_start == bytes.len() {
-        return Err(SemverErrorKind::EmptySegment.into());
+        return Err(SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata).into());
     }
     Ok(())
 }
@@ -482,6 +494,34 @@ mod tests {
         assert_eq!(
             parse_prerelease_identifier("alpha-1").kind,
             IdentifierKind::AlphaNumeric
+        );
+    }
+
+    #[test]
+    fn empty_identifier_errors_include_the_position() {
+        assert_eq!(
+            PreRelease::new("").unwrap_err().to_string(),
+            "empty identifier segment in pre-release identifier"
+        );
+        assert_eq!(
+            BuildMetadata::new("").unwrap_err().to_string(),
+            "empty identifier segment in build metadata"
+        );
+        assert_eq!(
+            PreRelease::new("alpha!").unwrap_err().to_string(),
+            "unexpected character '!' after pre-release identifier"
+        );
+        assert_eq!(
+            BuildMetadata::new("build!").unwrap_err().to_string(),
+            "unexpected character '!' after build metadata"
+        );
+        assert_eq!(
+            PreRelease::new("alpha\u{3042}").unwrap_err().to_string(),
+            "unexpected character '\u{3042}' after pre-release identifier"
+        );
+        assert_eq!(
+            PreRelease::new("01").unwrap_err().to_string(),
+            "invalid leading zero in pre-release identifier"
         );
     }
 
