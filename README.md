@@ -41,7 +41,7 @@ Enable `serde` to serialize and deserialize versions and ranges:
 
 ```toml
 [dependencies]
-js-semver = { version = "0.4", features = ["serde"] }
+js-semver = { version = "1", features = ["serde"] }
 serde_json = "1"
 ```
 
@@ -64,7 +64,7 @@ assert!(react.satisfies(&"19.1.0".parse().unwrap()));
 
 ```toml
 [dependencies]
-js-semver = { version = "0.4", default-features = false }
+js-semver = { version = "1", default-features = false }
 ```
 
 ## Comparison with other crates
