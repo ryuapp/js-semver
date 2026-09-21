@@ -10,10 +10,10 @@ repository = "https://github.com/ryuapp/js-semver"
 keywords = ["semver", "nodejs", "npm"]
 categories = ["no-std"]
 include = [
-    "src/**/*",
-    "benches/**/*",
-    "LICENSE",
-    "README.md",
+    "/src/**/*",
+    "/benches/**/*",
+    "/LICENSE",
+    "/README.md",
 ]
 
 [features]
@@ -83,3 +83,8 @@ dbg_macro = "deny"
 print_stdout = "deny"
 print_stderr = "deny"
 inline_always = "deny"
+
+[workspace]
+members = [".", "fuzz", "website/benchmarks", "website/wasm"]
+default-members = [".", "fuzz", "website/benchmarks", "website/wasm"]
+resolver = "3"
