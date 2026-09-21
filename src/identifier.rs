@@ -93,7 +93,7 @@ impl FromStr for PreRelease {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Default)]
 /// Parsed build metadata such as `build.42`.
 pub struct BuildMetadata(Box<str>);
 
@@ -136,6 +136,14 @@ impl BuildMetadata {
         self.0.is_empty()
     }
 }
+
+impl PartialEq for BuildMetadata {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for BuildMetadata {}
 
 impl fmt::Display for BuildMetadata {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -369,6 +377,13 @@ fn cmp_dot_separated<'a>(
 }
 
 fn cmp_numeric_strings(left: &str, right: &str) -> Ordering {
+    if left.is_empty() || right.is_empty() {
+        return left.len().cmp(&right.len());
+    }
+
+    let left = left.trim_start_matches('0');
+    let right = right.trim_start_matches('0');
+
     match left.len().cmp(&right.len()) {
         Ordering::Equal => left.cmp(right),
         ord @ (Ordering::Less | Ordering::Greater) => ord,
@@ -549,6 +564,11 @@ mod tests {
     #[test]
     fn build_metadata_public_api() {
         assert!(BuildMetadata::default().is_empty());
+        assert_eq!(
+            BuildMetadata::new("01").unwrap(),
+            BuildMetadata::new("1").unwrap()
+        );
+        assert!(BuildMetadata::new("0002").unwrap() < BuildMetadata::new("10").unwrap());
         assert_eq!(
             BuildMetadata::new("build.001").unwrap().to_string(),
             "build.001"

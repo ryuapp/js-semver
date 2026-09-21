@@ -122,11 +122,18 @@ fn upstream_equality_cases() {
 
 #[test]
 fn cmp_build_uses_build_metadata_as_tiebreaker() {
+    assert_eq!(v("1.2.3").cmp_build(&v("1.2.3+0")), Ordering::Less);
     assert_eq!(v("1.2.3+a").cmp_build(&v("1.2.3+b")), Ordering::Less);
     assert_eq!(
         v("1.2.3-alpha+meta.1").cmp_build(&v("1.2.3-alpha+meta.2")),
         Ordering::Less
     );
+    assert_eq!(v("1.2.3+01").cmp_build(&v("1.2.3+1")), Ordering::Equal);
+    assert_eq!(v("1.2.3+0002").cmp_build(&v("1.2.3+10")), Ordering::Less);
+    assert_eq!(v("1.2.3+10").cmp_build(&v("1.2.3+0002")), Ordering::Greater);
+    assert_eq!(v("1.2.3+1").cmp_build(&v("1.2.3+a")), Ordering::Less);
+    assert_eq!(v("1.2.3+a").cmp_build(&v("1.2.3+1")), Ordering::Greater);
+    assert_eq!(v("1.2.3+a").cmp_build(&v("1.2.3+a.0")), Ordering::Less);
 }
 
 #[test]
