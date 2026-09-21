@@ -60,16 +60,25 @@ jobs:
         with:
           toolchain: nightly
           components: clippy,rustfmt
-      - name: Check formatting
-        run: cargo fmt --check
-      - name: Clippy (default features)
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-      - name: Clippy (no default features)
-        run: cargo clippy -p js-semver --all-targets --no-default-features -- -D warnings
-      - name: Clippy (serde only)
-        run: cargo clippy -p js-semver --all-targets --no-default-features --features serde -- -D warnings
-      - name: Check benches
-        run: cargo check --benches
+      - parallel:
+          - name: Check formatting
+            run: cargo fmt --check
+          - name: Clippy (default features)
+            run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+            env:
+              CARGO_TARGET_DIR: target/clippy-all-features
+          - name: Clippy (no default features)
+            run: cargo clippy -p js-semver --all-targets --no-default-features -- -D warnings
+            env:
+              CARGO_TARGET_DIR: target/clippy-no-default-features
+          - name: Clippy (serde only)
+            run: cargo clippy -p js-semver --all-targets --no-default-features --features serde -- -D warnings
+            env:
+              CARGO_TARGET_DIR: target/clippy-serde
+          - name: Check benches
+            run: cargo check --benches
+            env:
+              CARGO_TARGET_DIR: target/check-benches
 
   fuzz:
     runs-on: ubuntu-latest
