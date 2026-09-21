@@ -56,8 +56,11 @@ impl PreRelease {
     }
 
     pub(crate) fn cmp_identifiers(&self, other: &Self) -> Ordering {
-        if self.is_empty() || other.is_empty() {
-            return self.0.len().cmp(&other.0.len());
+        match (self.is_empty(), other.is_empty()) {
+            (true, false) => return Ordering::Greater,
+            (false, true) => return Ordering::Less,
+            (true, true) => return Ordering::Equal,
+            (false, false) => {}
         }
 
         cmp_dot_separated(&self.0, &other.0, parse_prerelease_identifier)
@@ -571,11 +574,11 @@ mod tests {
     fn empty_component_shortcuts() {
         assert_eq!(
             PreRelease::default().cmp(&PreRelease::zero()),
-            Ordering::Less
+            Ordering::Greater
         );
         assert_eq!(
             PreRelease::zero().cmp(&PreRelease::default()),
-            Ordering::Greater
+            Ordering::Less
         );
         assert_eq!(
             BuildMetadata::default().cmp(&BuildMetadata::new("meta").unwrap()),
@@ -632,7 +635,7 @@ mod tests {
         );
         assert_eq!(
             PreRelease::default().cmp(&PreRelease::new("0").unwrap()),
-            Ordering::Less
+            Ordering::Greater
         );
         assert_eq!(
             PreRelease::new("alpha")
