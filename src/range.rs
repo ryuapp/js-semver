@@ -915,7 +915,7 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
     let bytes = s.as_bytes();
     let group_count = count_or_groups(bytes);
     if group_count == 1 {
-        let comparator_set = parse_comparator_set(s)?;
+        let comparator_set = parse_comparator_set(s, !exceeds_max_length)?;
         if !comparator_set.comparators.is_empty() && exceeds_max_length {
             return Err(SemverErrorKind::MaxLengthExceeded.into());
         }
@@ -929,7 +929,7 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
     let mut i = 0;
     while i < bytes.len() {
         if i + 1 < bytes.len() && bytes[i] == b'|' && bytes[i + 1] == b'|' {
-            let comparator_set = parse_comparator_set(s[start..i].trim())?;
+            let comparator_set = parse_comparator_set(s[start..i].trim(), !exceeds_max_length)?;
             set.push(comparator_set);
             i += 2;
             start = i;
@@ -937,7 +937,10 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
             i += 1;
         }
     }
-    set.push(parse_comparator_set(s[start..].trim())?);
+    set.push(parse_comparator_set(
+        s[start..].trim(),
+        !exceeds_max_length,
+    )?);
 
     let has_unbounded_set = set
         .iter()
@@ -993,7 +996,7 @@ fn range_len_without_build_metadata(s: &str) -> usize {
     len
 }
 
-fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
+fn parse_comparator_set(s: &str, normalize: bool) -> Result<ComparatorSet, SemverError> {
     if s.is_empty() || s == "*" {
         return Ok(ComparatorSet {
             comparators: vec![],
@@ -1011,7 +1014,11 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
         return Ok(ComparatorSet { comparators: comps });
     }
 
-    let mut all = Vec::with_capacity(count_whitespace_tokens(bytes).saturating_mul(2));
+    let mut all = if normalize {
+        Vec::with_capacity(count_whitespace_tokens(bytes).saturating_mul(2))
+    } else {
+        Vec::with_capacity(1)
+    };
     let mut pos = 0;
     while let Some(t) = next_whitespace_token(s, bytes, &mut pos) {
         let is_op_only = matches!(t, ">" | ">=" | "<" | "<=" | "=" | "^" | "~" | "~=" | "~>");
@@ -1029,12 +1036,12 @@ fn parse_comparator_set(s: &str) -> Result<ComparatorSet, SemverError> {
                 // SAFETY: `t` and `next` are slices of the original `&str`, so their bytes are
                 // valid UTF-8 after concatenation as well.
                 let merged = unsafe { core::str::from_utf8_unchecked(&buf[..len]) };
-                parse_token_into(&mut all, merged)?;
+                parse_set_token_into(&mut all, merged, normalize)?;
             } else {
-                parse_token_into(&mut all, t)?;
+                parse_set_token_into(&mut all, t, normalize)?;
             }
         } else {
-            parse_token_into(&mut all, t)?;
+            parse_set_token_into(&mut all, t, normalize)?;
         }
     }
     Ok(ComparatorSet { comparators: all })
@@ -1104,6 +1111,23 @@ fn try_hyphen(s: &str) -> Result<Option<Vec<Comparator>>, SemverError> {
         i += 1;
     }
     Ok(None)
+}
+
+fn parse_set_token_into(
+    all: &mut Vec<Comparator>,
+    s: &str,
+    normalize: bool,
+) -> Result<(), SemverError> {
+    if normalize {
+        return parse_token_into(all, s);
+    }
+
+    let mut parsed = Vec::with_capacity(2);
+    parse_token_into(&mut parsed, s)?;
+    if all.is_empty() {
+        all.extend(parsed.into_iter().take(1));
+    }
+    Ok(())
 }
 
 fn parse_token_into(all: &mut Vec<Comparator>, s: &str) -> Result<(), SemverError> {
@@ -1678,12 +1702,18 @@ mod tests {
         assert_eq!(parse_range("1.0.0 || 2.0.0 || 3.0.0").unwrap().set.len(), 3);
         assert!(parse_range(">= || 1.0.0").is_err());
         assert!(parse_range("1.0.0 || >=").is_err());
-        assert!(parse_comparator_set(">= ").is_err());
+        assert!(parse_comparator_set(">= ", true).is_err());
         let mut long_bounded_range = "1.0.0 || ".repeat(29);
         long_bounded_range.push_str("1.0.0");
         assert!(parse_range(&long_bounded_range).is_err());
         assert_eq!(try_hyphen("1.0.0 - 2.0.0").unwrap().unwrap().len(), 2);
         assert!(try_hyphen("1.0.0 - 9007199254740991").is_err());
+    }
+
+    #[test]
+    fn oversized_comparator_sets_skip_quadratic_normalization() {
+        let input = ">=1.0.0 ".repeat(20_000);
+        assert!(parse_range(&input).is_err());
     }
 
     #[test]
