@@ -4,8 +4,6 @@ version = "0.0.0"
 edition = "2024"
 publish = false
 
-[workspace]
-
 [dev-dependencies]
 js-semver = { path = "../.." }
 node-semver = "2.2.0"

@@ -37,9 +37,9 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
       - run: cargo test
-      - run: cargo test --no-default-features
-      - run: cargo test --features serde
-      - run: cargo test --no-default-features --features serde
+      - run: cargo test -p js-semver --no-default-features
+      - run: cargo test -p js-semver --features serde
+      - run: cargo test -p js-semver --no-default-features --features serde
 
   lint:
     runs-on: ubuntu-latest
@@ -65,11 +65,30 @@ jobs:
       - name: Clippy (default features)
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Clippy (no default features)
-        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+        run: cargo clippy -p js-semver --all-targets --no-default-features -- -D warnings
       - name: Clippy (serde only)
-        run: cargo clippy --workspace --all-targets --no-default-features --features serde -- -D warnings
+        run: cargo clippy -p js-semver --all-targets --no-default-features --features serde -- -D warnings
       - name: Check benches
         run: cargo check --benches
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build fuzz image
+        run: docker build --platform linux/amd64 --tag js-semver-fuzz --file fuzz/Dockerfile fuzz
+      - name: Fuzz ranges
+        run: docker run --rm --platform linux/amd64 --volume "$PWD:/workspace" js-semver-fuzz fuzz run --target x86_64-unknown-linux-gnu range -- -max_total_time=30 -max_len=65536 -timeout=2
+      - name: Fuzz versions
+        run: docker run --rm --platform linux/amd64 --volume "$PWD:/workspace" js-semver-fuzz fuzz run --target x86_64-unknown-linux-gnu version -- -max_total_time=30 -max_len=65536 -timeout=2
+      - name: Check pathological inputs
+        run: docker run --rm --platform linux/amd64 --volume "$PWD:/workspace" js-semver-fuzz fuzz run --target x86_64-unknown-linux-gnu pathological -- -runs=1 -timeout=10
 
   coverage:
     runs-on: ubuntu-latest
@@ -101,7 +120,7 @@ jobs:
         with:
           components: llvm-tools-preview
       - uses: jdx/mise-action@3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518 # v4.2.5
-      - run: cargo llvm-cov --all-features --lcov --output-path lcov.info
+      - run: cargo llvm-cov -p js-semver --all-features --lcov --output-path lcov.info
       - uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           files: lcov.info

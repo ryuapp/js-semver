@@ -14,7 +14,7 @@
     },
     "bench:crate": "cargo +nightly bench --manifest-path benchmarks/Cargo.toml --bench comparison",
     "bench:update": "deno run --allow-run=cargo --allow-read=.. --allow-write=benchmarks/results.json benchmarks/update-website.ts",
-    "wasm:build": "wasm-pack build wasm --target web --out-dir pkg --out-name js_semver_website_wasm",
+    "wasm:build": "wasm-pack build wasm --profile website --target web --out-dir pkg --out-name js_semver_website_wasm -- --config profile.toml",
     "preview": "vite preview"
   },
   "imports": {
