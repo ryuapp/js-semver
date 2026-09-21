@@ -99,8 +99,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
       - name: Build fuzz image
-        run: docker build --platform linux/amd64 --tag js-semver-fuzz --file fuzz/Dockerfile fuzz
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: fuzz
+          platforms: linux/amd64
+          tags: js-semver-fuzz
+          load: true
+          cache-from: type=gha,scope=fuzz
+          cache-to: type=gha,mode=max,scope=fuzz
       - name: Fuzz ranges
         run: docker run --rm --platform linux/amd64 --volume "$PWD:/workspace" js-semver-fuzz fuzz run --target x86_64-unknown-linux-gnu range -- -max_total_time=30 -max_len=65536 -timeout=2
       - name: Fuzz versions
