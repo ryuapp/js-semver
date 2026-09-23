@@ -264,6 +264,11 @@ impl Partial {
 fn parse_partial(s: &str) -> Result<Partial, SemverError> {
     let s = s.trim();
     let s = if has_fully_qualified_numeric_core_after_full_strip(s) {
+        if s.starts_with('=') {
+            return Err(
+                SemverErrorKind::UnexpectedCharacterWhileParsing('=', Position::Major).into(),
+            );
+        }
         s.strip_prefix(['v', '=']).unwrap_or(s)
     } else {
         s.trim_start_matches(['v', '='])
@@ -1145,7 +1150,10 @@ fn parse_token_into(all: &mut Vec<Comparator>, s: &str) -> Result<(), SemverErro
         return expand_tilde_into(all, parse_required_partial(rest, "~")?);
     }
     if let Some(rest) = s.strip_prefix('^') {
-        return expand_caret_into(all, parse_required_partial(rest, "^")?);
+        return expand_caret_into(
+            all,
+            parse_required_partial(rest.trim_start_matches(['v', '=']), "^")?,
+        );
     }
     if let Some(rest) = s.strip_prefix(">=") {
         return expand_primitive_into(
