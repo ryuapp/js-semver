@@ -86,6 +86,6 @@ print_stderr = "deny"
 inline_always = "deny"
 
 [workspace]
-members = [".", "fuzz", "website/benchmarks", "website/wasm"]
+members = [".", "fuzz", "scripts/coverage", "website/benchmarks", "website/wasm"]
 default-members = [".", "fuzz", "website/benchmarks", "website/wasm"]
 resolver = "3"
