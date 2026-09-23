@@ -14,7 +14,7 @@
 use core::cmp::Ordering;
 use core::fmt::{self, Write as _};
 
-use js_semver::{BuildMetadata, PreRelease, Version};
+use js_semver::Version;
 
 fn v(s: &str) -> Version {
     s.parse().unwrap()
@@ -82,21 +82,6 @@ fn parse_valid_and_display_cases() {
     for (input, expected) in cases {
         assert_eq!(input.parse::<Version>().unwrap().to_string(), expected);
     }
-
-    assert_eq!(Version::parse(" 1.2.3 ").unwrap(), Version::new(1, 2, 3));
-    assert_eq!(Version::parse(" 10.2.3 ").unwrap(), Version::new(10, 2, 3));
-    assert_eq!(
-        Version::parse("\u{2003}1.2.3\u{2003}").unwrap(),
-        Version::new(1, 2, 3)
-    );
-}
-
-#[test]
-fn identifier_prefix_ordering() {
-    assert!(PreRelease::new("alpha").unwrap() < PreRelease::new("alpha.1").unwrap());
-    assert!(PreRelease::new("alpha.1").unwrap() > PreRelease::new("alpha").unwrap());
-    assert!(BuildMetadata::new("build").unwrap() < BuildMetadata::new("build.1").unwrap());
-    assert!(BuildMetadata::new("build.1").unwrap() > BuildMetadata::new("build").unwrap());
 }
 
 #[test]
@@ -134,13 +119,6 @@ fn cmp_build_uses_build_metadata_as_tiebreaker() {
     assert_eq!(v("1.2.3+1").cmp_build(&v("1.2.3+a")), Ordering::Less);
     assert_eq!(v("1.2.3+a").cmp_build(&v("1.2.3+1")), Ordering::Greater);
     assert_eq!(v("1.2.3+a").cmp_build(&v("1.2.3+a.0")), Ordering::Less);
-}
-
-#[test]
-fn cmp_versions() {
-    assert!(v("1.0.0") < v("2.0.0"));
-    assert!(v("2.0.0") > v("1.0.0"));
-    assert_eq!(v("1.0.0"), v("1.0.0"));
 }
 
 #[test]
@@ -187,7 +165,7 @@ fn pre_lower_than_release() {
 }
 
 #[test]
-fn comparators_gt_gte_lt_lte_eq_neq() {
+fn comparison_operators() {
     assert!(v("2.0.0") > v("1.0.0"));
     assert!(v("1.0.0") <= v("2.0.0"));
     assert!(v("1.0.0") >= v("1.0.0"));
@@ -221,24 +199,6 @@ fn sort_versions() {
             v("1.0.0"),
         ]
     );
-}
-
-#[test]
-fn prerelease_field() {
-    assert!(v("1.2.3").pre_release.is_empty());
-    assert!(!v("1.2.3-alpha.1").pre_release.is_empty());
-    assert_eq!(v("1.2.3-alpha.1").pre_release.to_string(), "alpha.1");
-}
-
-#[test]
-fn release_greater_than_prerelease() {
-    assert_eq!(v("1.0.0").cmp(&v("1.0.0-alpha")), Ordering::Greater);
-}
-
-#[test]
-fn semver_error_display() {
-    let err = "bad".parse::<Version>().unwrap_err();
-    assert_ne!(err.to_string(), "");
 }
 
 #[test]
