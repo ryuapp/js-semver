@@ -6,7 +6,7 @@ Third-party pull requests are not accepted, to reduce the attack surface around 
 
 ## Issues
 
-Please fill out issues for new features and bugs.
+Please fill out issues for bugs or compatibility issues with node-semver.
 When reporting a bug, provide a minimal reproduction. Issues without a reproduction may be closed quickly.
 
 ## Security
