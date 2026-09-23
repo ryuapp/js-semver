@@ -596,6 +596,19 @@ fn invalid_partial_after_operator_errors() {
 }
 
 #[test]
+fn repeated_comparator_operators_are_invalid() {
+    for input in ["==1.2.3", ">==1.2.3", "<==1.2.3", ">= =1.2.3", "<= =1.2.3"] {
+        assert_invalid_range(input);
+    }
+    assert_eq!(r("=v1.2.3").to_string(), "1.2.3");
+    assert_eq!(r(">=v1.2.3").to_string(), ">=1.2.3");
+    assert_eq!(r("==1").to_string(), ">=1.0.0 <2.0.0-0");
+    assert_eq!(r("^=1.2.3").to_string(), ">=1.2.3 <2.0.0-0");
+    assert_eq!(r("^==1.2.3").to_string(), ">=1.2.3 <2.0.0-0");
+    assert_eq!(r("^vv1.2.3").to_string(), ">=1.2.3 <2.0.0-0");
+}
+
+#[test]
 fn prerelease_zero_upper_bound_excludes_next_tuple_prereleases() {
     let range = r("^1.2.3");
     assert_eq!(range.to_string(), ">=1.2.3 <2.0.0-0");

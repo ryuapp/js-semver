@@ -38,6 +38,11 @@ fn range_parse(b: &mut Bencher) {
 }
 
 #[bench]
+fn range_parse_comparator(b: &mut Bencher) {
+    b.iter(|| black_box(Range::parse(black_box(">=1.2.3 <2.0.0"))));
+}
+
+#[bench]
 fn parse_and_satisfies(b: &mut Bencher) {
     b.iter(|| {
         let range = Range::parse(black_box("^4.1.0-rc"));
