@@ -104,11 +104,8 @@ fn expand_major_range_into(
 
 /// Expand a tilde range: `~1.2.3` → `>=1.2.3 <1.3.0-0`.
 pub(super) fn expand_tilde_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), SemverError> {
-    if p.minor.is_none() {
-        return expand_major_range_into(out, p.major);
-    }
     let (Some(major), Some(minor)) = (p.major, p.minor) else {
-        return Ok(());
+        return expand_major_range_into(out, p.major);
     };
     let floor = match p.patch {
         None => Version::new(major, minor, 0),
@@ -131,11 +128,8 @@ pub(super) fn expand_tilde(p: Partial) -> Result<Vec<Comparator>, SemverError> {
 
 /// Expand a caret range: `^1.2.3` → `>=1.2.3 <2.0.0-0`.
 pub(super) fn expand_caret_into(out: &mut Vec<Comparator>, p: Partial) -> Result<(), SemverError> {
-    if p.minor.is_none() {
-        return expand_major_range_into(out, p.major);
-    }
     let (Some(major), Some(minor)) = (p.major, p.minor) else {
-        return Ok(());
+        return expand_major_range_into(out, p.major);
     };
     let floor = match p.patch {
         None => Version::new(major, minor, 0),
