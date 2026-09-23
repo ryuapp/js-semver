@@ -3,5 +3,4 @@ lockfile = true
 locked_verify_provenance = true
 
 [tools]
-"aqua:taiki-e/cargo-llvm-cov" = "0.8.5"
 "aqua:wasm-bindgen/wasm-pack" = "0.14.0"
