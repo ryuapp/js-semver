@@ -174,13 +174,11 @@ impl FromStr for Version {
 // --------------------------------------------------------------------------
 
 fn parse_version(s: &str) -> Result<Version, SemverError> {
-    if s.len() <= MAX_LENGTH {
-        if let Some(version) = parse_fast_version(s) {
-            return Ok(version);
-        }
+    if let Some(version) = parse_fast_version(s) {
+        return Ok(version);
     }
     let ascii_trimmed = trim_ascii_whitespace(s);
-    if ascii_trimmed.len() != s.len() && ascii_trimmed.len() <= MAX_LENGTH {
+    if ascii_trimmed.len() != s.len() {
         if let Some(version) = parse_fast_version(ascii_trimmed) {
             return Ok(version);
         }
@@ -195,9 +193,6 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
             .into()),
             None => Err(SemverErrorKind::Empty.into()),
         };
-    }
-    if raw.len() > MAX_LENGTH {
-        return Err(SemverErrorKind::MaxLengthExceeded.into());
     }
     let b = raw.as_bytes();
 
