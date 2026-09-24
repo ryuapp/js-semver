@@ -85,6 +85,25 @@ fn parse_valid_and_display_cases() {
 }
 
 #[test]
+fn version_input_length_is_checked_before_trimming() {
+    let max_length_prerelease = format!("1.2.3-{}", "a".repeat(250));
+    assert_eq!(max_length_prerelease.len(), 256);
+    assert!(Version::parse(&max_length_prerelease).is_ok());
+
+    let oversized_prerelease = format!("1.2.3-{}", "a".repeat(251));
+    assert_eq!(oversized_prerelease.len(), 257);
+    assert!(Version::parse(&oversized_prerelease).is_err());
+
+    let max_length_with_whitespace = format!("{}1.2.3", " ".repeat(251));
+    assert_eq!(max_length_with_whitespace.len(), 256);
+    assert!(Version::parse(&max_length_with_whitespace).is_ok());
+
+    let oversized_with_whitespace = format!("{}1.2.3", " ".repeat(252));
+    assert_eq!(oversized_with_whitespace.len(), 257);
+    assert!(Version::parse(&oversized_with_whitespace).is_err());
+}
+
+#[test]
 fn build_is_ignored_in_eq_and_ord() {
     assert_eq!(v("1.2.3+a"), v("1.2.3+b"));
     assert_eq!(v("1.2.3+a").cmp(&v("1.2.3+b")), Ordering::Equal);
