@@ -22,7 +22,7 @@ std = []
 serde = ["dep:serde"]
 
 [dependencies]
-serde = { package = "serde_core", version = "^1.0.220", optional = true }
+serde = { package = "serde_core", version = "^1.0.220", optional = true, default-features = false }
 
 [dev-dependencies]
 serde_json = "1"
