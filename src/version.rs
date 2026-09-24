@@ -88,13 +88,14 @@ impl Version {
     ///
     /// Returns [`SemverError`] if `s` is not a valid semver string.
     pub fn parse(s: &str) -> Result<Self, SemverError> {
-        if s.len() <= MAX_LENGTH {
-            if let Some(version) = parse_fixed_core_version(s.as_bytes()) {
-                return Ok(version);
-            }
+        if s.len() > MAX_LENGTH {
+            return Err(SemverErrorKind::MaxLengthExceeded.into());
+        }
+        if let Some(version) = parse_fixed_core_version(s.as_bytes()) {
+            return Ok(version);
         }
         let ascii_trimmed = trim_ascii_whitespace(s);
-        if ascii_trimmed.len() != s.len() && ascii_trimmed.len() <= MAX_LENGTH {
+        if ascii_trimmed.len() != s.len() {
             if let Some(version) = parse_fixed_core_version(ascii_trimmed.as_bytes()) {
                 return Ok(version);
             }
