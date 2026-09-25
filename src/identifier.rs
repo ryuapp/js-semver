@@ -439,6 +439,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn alphanumeric_fast_path_matches_identifier_ordering() {
         let mut values = [
             "",

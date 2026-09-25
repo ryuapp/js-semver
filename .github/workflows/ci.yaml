@@ -41,6 +41,29 @@ jobs:
       - run: cargo test -p js-semver --features serde
       - run: cargo test -p js-semver --no-default-features --features serde
 
+  miri:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: block
+          allowed-endpoints: >
+            github.com:443
+            index.crates.io:443
+            static.crates.io:443
+            static.rust-lang.org:443
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          toolchain: nightly
+          components: miri
+      - run: cargo miri setup
+      - run: cargo miri test -p js-semver
+      - run: cargo miri test -p js-semver --no-default-features
+
   lint:
     runs-on: ubuntu-latest
     steps:
