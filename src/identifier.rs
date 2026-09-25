@@ -1,6 +1,3 @@
-#[cfg(not(feature = "std"))]
-use alloc::boxed::Box;
-
 use core::cmp::Ordering;
 use core::fmt;
 use core::str::FromStr;
@@ -8,13 +5,17 @@ use core::str::FromStr;
 use crate::SemverError;
 use crate::error::{Position, SemverErrorKind};
 
+mod text;
+
+use text::IdentifierText;
+
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 /// A parsed pre-release identifier list such as `alpha.1`.
-pub struct PreRelease(Box<str>);
+pub struct PreRelease(IdentifierText);
 
 impl PreRelease {
     pub(crate) fn zero() -> Self {
-        Self(Box::from("0"))
+        Self(IdentifierText::new("0"))
     }
 
     /// Parse a pre-release identifier list such as `alpha.1`.
@@ -37,7 +38,7 @@ impl PreRelease {
             return Err(SemverErrorKind::EmptyIdentifierSegment(Position::PreRelease).into());
         }
         validate_prerelease(s)?;
-        Ok(Self(Box::from(s)))
+        Ok(Self(IdentifierText::new(s)))
     }
 
     #[must_use]
@@ -52,7 +53,7 @@ impl PreRelease {
     /// assert!(!PreRelease::new("rc.1").unwrap().is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.0.as_str().is_empty()
     }
 
     pub(crate) fn cmp_identifiers(&self, other: &Self) -> Ordering {
@@ -63,13 +64,13 @@ impl PreRelease {
             (false, false) => {}
         }
 
-        cmp_dot_separated(&self.0, &other.0, parse_prerelease_identifier)
+        cmp_dot_separated(self.0.as_str(), other.0.as_str(), parse_identifier)
     }
 }
 
 impl fmt::Display for PreRelease {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(self.0.as_str())
     }
 }
 
@@ -95,7 +96,7 @@ impl FromStr for PreRelease {
 
 #[derive(Debug, Clone, Default)]
 /// Parsed build metadata such as `build.42`.
-pub struct BuildMetadata(Box<str>);
+pub struct BuildMetadata(IdentifierText);
 
 impl BuildMetadata {
     /// Parse build metadata such as `build.42`.
@@ -118,7 +119,7 @@ impl BuildMetadata {
             return Err(SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata).into());
         }
         validate_build_metadata(s)?;
-        Ok(Self(Box::from(s)))
+        Ok(Self(IdentifierText::new(s)))
     }
 
     #[must_use]
@@ -133,7 +134,7 @@ impl BuildMetadata {
     /// assert!(!BuildMetadata::new("sha.abcdef").unwrap().is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.0.as_str().is_empty()
     }
 }
 
@@ -147,7 +148,7 @@ impl Eq for BuildMetadata {}
 
 impl fmt::Display for BuildMetadata {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.0)
+        f.write_str(self.0.as_str())
     }
 }
 
@@ -160,10 +161,10 @@ impl PartialOrd for BuildMetadata {
 impl Ord for BuildMetadata {
     fn cmp(&self, other: &Self) -> Ordering {
         if self.is_empty() || other.is_empty() {
-            return self.0.len().cmp(&other.0.len());
+            return self.0.as_str().len().cmp(&other.0.as_str().len());
         }
 
-        cmp_dot_separated(&self.0, &other.0, parse_build_metadata_identifier)
+        cmp_dot_separated(self.0.as_str(), other.0.as_str(), parse_identifier)
     }
 }
 
@@ -187,33 +188,15 @@ struct Identifier<'a> {
     kind: IdentifierKind,
 }
 
-impl<'a> Identifier<'a> {
-    fn new(raw: &'a str, kind: IdentifierKind) -> Self {
-        Self { raw, kind }
+fn parse_identifier(raw: &str) -> Identifier<'_> {
+    Identifier {
+        raw,
+        kind: if raw.bytes().all(|byte| byte.is_ascii_digit()) {
+            IdentifierKind::Numeric
+        } else {
+            IdentifierKind::AlphaNumeric
+        },
     }
-}
-
-fn parse_prerelease_identifier(raw: &str) -> Identifier<'_> {
-    let bytes = raw.as_bytes();
-    Identifier::new(
-        raw,
-        if bytes.iter().all(u8::is_ascii_digit) {
-            IdentifierKind::Numeric
-        } else {
-            IdentifierKind::AlphaNumeric
-        },
-    )
-}
-
-fn parse_build_metadata_identifier(raw: &str) -> Identifier<'_> {
-    Identifier::new(
-        raw,
-        if raw.bytes().all(|byte| byte.is_ascii_digit()) {
-            IdentifierKind::Numeric
-        } else {
-            IdentifierKind::AlphaNumeric
-        },
-    )
 }
 
 impl PartialOrd for Identifier<'_> {
@@ -240,22 +223,22 @@ fn validate_prerelease(s: &str) -> Result<(), SemverError> {
     let mut segment_start = 0;
     let mut all_digits = true;
 
-    for (pos, ch) in s.char_indices() {
-        match ch {
-            '.' => {
+    for (pos, &byte) in bytes.iter().enumerate() {
+        match byte {
+            b'.' => {
                 validate_prerelease_segment(bytes, segment_start, pos, all_digits)?;
                 segment_start = pos + 1;
                 all_digits = true;
             }
-            '0'..='9' => {}
-            'A'..='Z' | 'a'..='z' | '-' => all_digits = false,
+            b'0'..=b'9' => {}
+            b'A'..=b'Z' | b'a'..=b'z' | b'-' => all_digits = false,
             _ => {
-                let kind = if pos == segment_start {
-                    SemverErrorKind::UnexpectedCharacterWhileParsing(ch, Position::PreRelease)
-                } else {
-                    SemverErrorKind::UnexpectedCharacterAfter(ch, Position::PreRelease)
-                };
-                return Err(kind.into());
+                return Err(unexpected_identifier_character(
+                    s,
+                    pos,
+                    segment_start,
+                    Position::PreRelease,
+                ));
             }
         }
     }
@@ -282,9 +265,9 @@ pub(crate) fn validate_build_metadata(s: &str) -> Result<(), SemverError> {
     let bytes = s.as_bytes();
     let mut segment_start = 0;
 
-    for (pos, ch) in s.char_indices() {
-        match ch {
-            '.' => {
+    for (pos, &byte) in bytes.iter().enumerate() {
+        match byte {
+            b'.' => {
                 if pos == segment_start {
                     return Err(
                         SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata).into(),
@@ -292,14 +275,14 @@ pub(crate) fn validate_build_metadata(s: &str) -> Result<(), SemverError> {
                 }
                 segment_start = pos + 1;
             }
-            '0'..='9' | 'A'..='Z' | 'a'..='z' | '-' => {}
+            b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'-' => {}
             _ => {
-                let kind = if pos == segment_start {
-                    SemverErrorKind::UnexpectedCharacterWhileParsing(ch, Position::BuildMetadata)
-                } else {
-                    SemverErrorKind::UnexpectedCharacterAfter(ch, Position::BuildMetadata)
-                };
-                return Err(kind.into());
+                return Err(unexpected_identifier_character(
+                    s,
+                    pos,
+                    segment_start,
+                    Position::BuildMetadata,
+                ));
             }
         }
     }
@@ -308,6 +291,25 @@ pub(crate) fn validate_build_metadata(s: &str) -> Result<(), SemverError> {
         return Err(SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata).into());
     }
     Ok(())
+}
+
+fn unexpected_identifier_character(
+    s: &str,
+    pos: usize,
+    segment_start: usize,
+    position: Position,
+) -> SemverError {
+    // The byte scan returns at the first invalid byte, which is always the
+    // beginning of a UTF-8 character in a valid input str.
+    let ch = s[pos..]
+        .chars()
+        .next()
+        .unwrap_or(char::REPLACEMENT_CHARACTER);
+    if pos == segment_start {
+        SemverErrorKind::UnexpectedCharacterWhileParsing(ch, position).into()
+    } else {
+        SemverErrorKind::UnexpectedCharacterAfter(ch, position).into()
+    }
 }
 
 fn cmp_dot_separated<'a>(
@@ -407,6 +409,36 @@ mod tests {
     use super::*;
 
     #[test]
+    fn metadata_unicode_errors_keep_the_character_and_position() {
+        for (input, expected) in [
+            (
+                "é",
+                "unexpected character 'é' while parsing pre-release identifier",
+            ),
+            (
+                "a.é",
+                "unexpected character 'é' while parsing pre-release identifier",
+            ),
+            (
+                "aé",
+                "unexpected character 'é' after pre-release identifier",
+            ),
+        ] {
+            assert_eq!(PreRelease::new(input).unwrap_err().to_string(), expected);
+        }
+        for (input, expected) in [
+            ("é", "unexpected character 'é' while parsing build metadata"),
+            (
+                "a.é",
+                "unexpected character 'é' while parsing build metadata",
+            ),
+            ("aé", "unexpected character 'é' after build metadata"),
+        ] {
+            assert_eq!(BuildMetadata::new(input).unwrap_err().to_string(), expected);
+        }
+    }
+
+    #[test]
     fn alphanumeric_fast_path_matches_identifier_ordering() {
         let mut values = [
             "",
@@ -466,11 +498,11 @@ mod tests {
                     left.len().cmp(&right.len())
                 } else {
                     left.split('.')
-                        .map(parse_build_metadata_identifier)
-                        .cmp(right.split('.').map(parse_build_metadata_identifier))
+                        .map(parse_identifier)
+                        .cmp(right.split('.').map(parse_identifier))
                 };
                 assert_eq!(
-                    cmp_dot_separated(left, right, parse_build_metadata_identifier),
+                    cmp_dot_separated(left, right, parse_identifier),
                     expected,
                     "{left:?} vs {right:?}"
                 );
@@ -481,25 +513,23 @@ mod tests {
     #[test]
     fn identifier_ordering() {
         assert_eq!(
-            parse_build_metadata_identifier("1").cmp(&parse_build_metadata_identifier("2")),
+            parse_identifier("1").cmp(&parse_identifier("2")),
             Ordering::Less
         );
         assert_eq!(
-            parse_build_metadata_identifier("18446744073709551615")
-                .cmp(&parse_build_metadata_identifier("18446744073709551616")),
+            parse_identifier("18446744073709551615").cmp(&parse_identifier("18446744073709551616")),
             Ordering::Less
         );
         assert_eq!(
-            parse_build_metadata_identifier("18446744073709551616")
-                .cmp(&parse_build_metadata_identifier("18446744073709551617")),
+            parse_identifier("18446744073709551616").cmp(&parse_identifier("18446744073709551617")),
             Ordering::Less
         );
         assert_eq!(
-            parse_prerelease_identifier("1").cmp(&parse_prerelease_identifier("alpha")),
+            parse_identifier("1").cmp(&parse_identifier("alpha")),
             Ordering::Less
         );
         assert_eq!(
-            parse_prerelease_identifier("beta").cmp(&parse_prerelease_identifier("1")),
+            parse_identifier("beta").cmp(&parse_identifier("1")),
             Ordering::Greater
         );
     }
@@ -510,7 +540,7 @@ mod tests {
         assert!(PreRelease::new("01").is_err());
         assert!(PreRelease::new("a!b").is_err());
         assert_eq!(
-            parse_prerelease_identifier("alpha-1").kind,
+            parse_identifier("alpha-1").kind,
             IdentifierKind::AlphaNumeric
         );
     }
@@ -615,11 +645,11 @@ mod tests {
     #[test]
     fn identifier_partial_cmp_and_prefix_order() {
         assert_eq!(
-            parse_prerelease_identifier("alpha").partial_cmp(&parse_prerelease_identifier("alpha")),
+            parse_identifier("alpha").partial_cmp(&parse_identifier("alpha")),
             Some(Ordering::Equal)
         );
         assert_eq!(
-            cmp_dot_separated("alpha", "alpha.1", parse_prerelease_identifier),
+            cmp_dot_separated("alpha", "alpha.1", parse_identifier),
             Ordering::Less
         );
         assert_eq!(
@@ -637,7 +667,7 @@ mod tests {
             Some(Ordering::Less)
         );
         assert_eq!(
-            parse_build_metadata_identifier("1").partial_cmp(&parse_build_metadata_identifier("2")),
+            parse_identifier("1").partial_cmp(&parse_identifier("2")),
             Some(Ordering::Less)
         );
         assert_eq!("rc.1".parse::<PreRelease>().unwrap().to_string(), "rc.1");
