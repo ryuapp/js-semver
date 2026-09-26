@@ -60,6 +60,7 @@ jobs:
         with:
           toolchain: nightly
           components: miri
+          build-warnings: warn
       - run: cargo miri setup
       - run: cargo miri test -p js-semver
       - run: cargo miri test -p js-semver --no-default-features
