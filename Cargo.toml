@@ -8,7 +8,7 @@ documentation = "https://docs.rs/js-semver"
 license = "MIT-0"
 repository = "https://github.com/ryuapp/js-semver"
 keywords = ["semver", "nodejs", "npm"]
-categories = ["no-std"]
+categories = ["parser-implementations", "data-structures", "no-std"]
 include = [
     "/src/**/*",
     "/benches/**/*",
