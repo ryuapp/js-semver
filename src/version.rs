@@ -33,7 +33,7 @@ use crate::{MAX_LENGTH, SemverError};
 #[derive(Debug, Clone, Eq)]
 #[expect(
     clippy::exhaustive_structs,
-    reason = "Version fields are intentionally public for direct construction."
+    reason = "Keep Version exhaustive so callers can construct it with struct literals."
 )]
 pub struct Version {
     /// The major version.
