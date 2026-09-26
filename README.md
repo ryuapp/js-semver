@@ -6,6 +6,7 @@
 [![codecov](https://codecov.io/gh/ryuapp/js-semver/graph/badge.svg?token=P7NMEB4IP7)](https://codecov.io/gh/ryuapp/js-semver)
 
 A parser and evaluator for npm's flavor of Semantic Versioning, compliant with [node-semver](https://github.com/npm/node-semver).\
+
 It is written in pure Rust, offers high compatibility with [node-semver](https://github.com/npm/node-semver) and high performance, and has zero dependencies by default.
 
 ## Example
