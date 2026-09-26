@@ -31,6 +31,10 @@ use crate::{MAX_LENGTH, SemverError};
 /// assert_eq!(version.to_string(), "19.3.0-canary-044d56f3-20260330");
 /// ```
 #[derive(Debug, Clone, Eq)]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "Version fields are intentionally public for direct construction."
+)]
 pub struct Version {
     /// The major version.
     pub major: u64,
@@ -197,7 +201,7 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
     let b = raw.as_bytes();
 
     // Skip optional leading v prefix.
-    let mut pos = usize::from(matches!(b.first(), Some(b'v')));
+    let mut pos = usize::from(matches!(b.first().copied(), Some(b'v')));
 
     // Parse major.minor.patch in a single forward scan
     let major = parse_nr_at(raw, &mut pos, Position::Major)?;
@@ -253,7 +257,7 @@ fn parse_version(s: &str) -> Result<Version, SemverError> {
 }
 
 fn parse_fixed_core_version(bytes: &[u8]) -> Option<Version> {
-    let pos = usize::from(matches!(bytes.first(), Some(b'v')));
+    let pos = usize::from(matches!(bytes.first().copied(), Some(b'v')));
     if bytes.len() - pos == 5
         && bytes[pos].is_ascii_digit()
         && bytes[pos + 1] == b'.'
@@ -273,7 +277,7 @@ fn parse_fixed_core_version(bytes: &[u8]) -> Option<Version> {
 
 fn parse_fast_version(input: &str) -> Option<Version> {
     let bytes = input.as_bytes();
-    let mut pos = usize::from(matches!(bytes.first(), Some(b'v')));
+    let mut pos = usize::from(matches!(bytes.first().copied(), Some(b'v')));
     let major = parse_simple_core_number(bytes, &mut pos)?;
     if bytes.get(pos) != Some(&b'.') {
         return None;
@@ -345,7 +349,7 @@ fn parse_simple_core_number(bytes: &[u8], pos: &mut usize) -> Option<u64> {
         return None;
     }
 
-    let mut value = 0u64;
+    let mut value: u64 = 0;
     while let Some(digit @ b'0'..=b'9') = bytes.get(*pos).copied() {
         if *pos - start == MAX_SAFE_INTEGER_DIGITS {
             return None;
@@ -373,7 +377,7 @@ fn parse_nr_at(input: &str, pos: &mut usize, position: Position) -> Result<u64, 
     if b[start] == b'0' && b.get(start + 1).is_some_and(u8::is_ascii_digit) {
         return Err(SemverErrorKind::LeadingZero(position).into());
     }
-    let mut value = 0u64;
+    let mut value: u64 = 0;
     while let Some(&digit) = b.get(*pos).filter(|digit| digit.is_ascii_digit()) {
         if *pos - start == MAX_SAFE_INTEGER_DIGITS {
             return Err(SemverErrorKind::MaxSafeIntegerExceeded(position).into());

@@ -2,7 +2,7 @@ use crate::SemverError;
 use crate::error::{Position, SemverErrorKind};
 
 /// JavaScript's `Number.MAX_SAFE_INTEGER` (2^53 − 1).
-pub(crate) const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+pub(crate) const MAX_SAFE_INTEGER: u64 = 0x1F_FFFF_FFFF_FFFF;
 pub(crate) const MAX_SAFE_INTEGER_DIGITS: usize = 16;
 
 pub(crate) fn parse_nr(s: &str, position: Position) -> Result<u64, SemverError> {

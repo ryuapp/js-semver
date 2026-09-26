@@ -44,7 +44,7 @@ pub(crate) enum Operator {
 
 impl fmt::Display for Operator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+        f.write_str(match *self {
             Self::LessThan => "<",
             Self::LessThanOrEqual => "<=",
             Self::GreaterThan => ">",
@@ -150,10 +150,14 @@ enum ComparatorSets {
 }
 
 impl ComparatorSets {
+    #[expect(
+        clippy::ref_patterns,
+        reason = "The comparator sets must be borrowed from the shared reference."
+    )]
     fn iter(&self) -> core::slice::Iter<'_, ComparatorSet> {
-        match self {
-            Self::One(set) => core::slice::from_ref(set).iter(),
-            Self::Many(sets) => sets.iter(),
+        match *self {
+            Self::One(ref set) => core::slice::from_ref(set).iter(),
+            Self::Many(ref sets) => sets.iter(),
         }
     }
 
@@ -387,7 +391,7 @@ fn parse_comparator_set(s: &str, normalize: bool) -> Result<ComparatorSet, Semve
         let is_op_only = matches!(t, ">" | ">=" | "<" | "<=" | "=" | "^" | "~" | "~=" | "~>");
         if is_op_only {
             if let Some(next) = next_whitespace_token(s, bytes, &mut pos) {
-                let mut buf = [0u8; 258];
+                let mut buf: [u8; 258] = [0; 258];
                 let op = t.as_bytes();
                 let ver = strip_build_metadata(next)?.as_bytes();
                 let len = op.len() + ver.len();
@@ -410,7 +414,11 @@ fn parse_comparator_set(s: &str, normalize: bool) -> Result<ComparatorSet, Semve
     Ok(ComparatorSet { comparators: all })
 }
 
-fn next_whitespace_token<'a>(s: &'a str, bytes: &[u8], pos: &mut usize) -> Option<&'a str> {
+fn next_whitespace_token<'input>(
+    s: &'input str,
+    bytes: &[u8],
+    pos: &mut usize,
+) -> Option<&'input str> {
     while *pos < bytes.len() && bytes[*pos].is_ascii_whitespace() {
         *pos += 1;
     }
