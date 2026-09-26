@@ -599,6 +599,10 @@ mod tests {
             BuildMetadata::new("01").unwrap(),
             BuildMetadata::new("1").unwrap()
         );
+        assert_ne!(
+            BuildMetadata::new("build.1").unwrap(),
+            BuildMetadata::new("build.2").unwrap()
+        );
         assert!(BuildMetadata::new("0002").unwrap() < BuildMetadata::new("10").unwrap());
         assert_eq!(
             BuildMetadata::new("build.001").unwrap().to_string(),
