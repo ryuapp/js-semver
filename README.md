@@ -70,7 +70,7 @@ js-semver = { version = "0.4", default-features = false }
 
 ### node-semver
 
-[node-semver](https://crates.io/crates/node-semver) crate has numerous issues, including unnecessary dependencies like `miette`, incompatibilities with npm's [node-semver](https://github.com/npm/node-semver), and the fact that it is no longer actively maintained.
+[node-semver](https://crates.io/crates/node-semver) crate has numerous issues, including unnecessary dependencies like `miette`, incompatibilities with npm's [node-semver](https://github.com/npm/node-semver) (e.g., `<=1.2` is parsed as `<=1.2.0-0` in the crate's v2.2.0 release, so `1.2.9` does not satisfy it), and the fact that it is no longer actively maintained.
 
 #### Benchmarks
 
