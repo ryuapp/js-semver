@@ -36,7 +36,7 @@ pub(crate) enum SemverErrorKind {
 
 impl fmt::Display for SemverErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
+        match *self {
             Self::UnexpectedCharacterWhileParsing(ch, position) => write!(
                 f,
                 "unexpected character '{}' while parsing {}",
@@ -124,7 +124,7 @@ impl fmt::Display for SemverError {
 }
 
 #[cfg(feature = "std")]
-impl std::error::Error for SemverError {}
+impl core::error::Error for SemverError {}
 
 impl From<SemverErrorKind> for SemverError {
     fn from(kind: SemverErrorKind) -> Self {

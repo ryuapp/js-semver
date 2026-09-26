@@ -161,7 +161,7 @@ fn parse_simple_component(bytes: &[u8], start: usize) -> Option<(Option<u64>, us
             }
 
             let mut pos = start;
-            let mut value = 0u64;
+            let mut value: u64 = 0;
             while let Some(digit @ b'0'..=b'9') = bytes.get(pos).copied() {
                 if pos - start == MAX_SAFE_INTEGER_DIGITS {
                     return None;

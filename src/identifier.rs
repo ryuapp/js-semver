@@ -183,8 +183,8 @@ enum IdentifierKind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Identifier<'a> {
-    raw: &'a str,
+struct Identifier<'input> {
+    raw: &'input str,
     kind: IdentifierKind,
 }
 
@@ -312,10 +312,10 @@ fn unexpected_identifier_character(
     }
 }
 
-fn cmp_dot_separated<'a>(
-    left: &'a str,
-    right: &'a str,
-    parser: fn(&'a str) -> Identifier<'a>,
+fn cmp_dot_separated<'input>(
+    left: &'input str,
+    right: &'input str,
+    parser: fn(&'input str) -> Identifier<'input>,
 ) -> Ordering {
     let mut left_start = 0;
     let mut right_start = 0;
