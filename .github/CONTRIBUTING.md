@@ -11,8 +11,8 @@ When reporting a bug, provide a minimal reproduction. Issues without a reproduct
 
 ### node-semver compat
 
-Generally, we aim to match the behaviour covered by node-semver test suite.
-For behaviour not covered by the tests, we may choose not to make changes unless issues arise in the actual ecosystem and the need for a change is demonstrated.
+Our policy is to generally follow the behavior covered by node-semver's test suite.
+For behavior not covered by node-semver's tests, we may choose not to make changes unless a real-world ecosystem issue demonstrates a need.
 
 ## Security
 
