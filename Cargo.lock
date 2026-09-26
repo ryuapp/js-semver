@@ -80,7 +80,7 @@ dependencies = [
 
 [[package]]
 name = "js-semver"
-version = "0.4.1"
+version = "1.0.0"
 dependencies = [
  "serde_core",
  "serde_json",
