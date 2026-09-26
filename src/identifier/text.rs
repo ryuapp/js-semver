@@ -114,6 +114,8 @@ impl Eq for IdentifierText {}
 mod tests {
     #[cfg(not(feature = "std"))]
     use alloc::boxed::Box;
+    #[cfg(not(feature = "std"))]
+    use alloc::format;
 
     use super::*;
 
@@ -131,6 +133,7 @@ mod tests {
             let original = IdentifierText::new(&value);
             let cloned = original.clone();
             assert_eq!(original.as_str(), value);
+            assert_eq!(format!("{original:?}"), format!("{value:?}"));
             assert_eq!(original.is_inline(), len <= INLINE_CAPACITY);
             drop(original);
             assert_eq!(cloned.as_str(), value);
