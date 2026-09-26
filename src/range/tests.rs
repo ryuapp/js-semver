@@ -449,6 +449,7 @@ fn helper_expand_error_paths() {
 }
 
 #[test]
+#[cfg_attr(miri, ignore)]
 fn oversized_comparator_sets_skip_quadratic_normalization() {
     let input = ">=1.0.0 ".repeat(20_000);
     assert!(parse_range(&input).is_err());
