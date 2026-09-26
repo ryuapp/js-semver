@@ -219,6 +219,18 @@ impl Ord for Identifier<'_> {
 }
 
 fn validate_prerelease(s: &str) -> Result<(), SemverError> {
+    validate_identifiers(s, Position::PreRelease, true)
+}
+
+pub(crate) fn validate_build_metadata(s: &str) -> Result<(), SemverError> {
+    validate_identifiers(s, Position::BuildMetadata, false)
+}
+
+fn validate_identifiers(
+    s: &str,
+    position: Position,
+    reject_numeric_leading_zero: bool,
+) -> Result<(), SemverError> {
     let bytes = s.as_bytes();
     let mut segment_start = 0;
     let mut all_digits = true;
@@ -226,7 +238,14 @@ fn validate_prerelease(s: &str) -> Result<(), SemverError> {
     for (pos, &byte) in bytes.iter().enumerate() {
         match byte {
             b'.' => {
-                validate_prerelease_segment(bytes, segment_start, pos, all_digits)?;
+                validate_identifier_segment(
+                    bytes,
+                    segment_start,
+                    pos,
+                    all_digits,
+                    position,
+                    reject_numeric_leading_zero,
+                )?;
                 segment_start = pos + 1;
                 all_digits = true;
             }
@@ -237,58 +256,35 @@ fn validate_prerelease(s: &str) -> Result<(), SemverError> {
                     s,
                     pos,
                     segment_start,
-                    Position::PreRelease,
+                    position,
                 ));
             }
         }
     }
 
-    validate_prerelease_segment(bytes, segment_start, bytes.len(), all_digits)
+    validate_identifier_segment(
+        bytes,
+        segment_start,
+        bytes.len(),
+        all_digits,
+        position,
+        reject_numeric_leading_zero,
+    )
 }
 
-fn validate_prerelease_segment(
+fn validate_identifier_segment(
     bytes: &[u8],
     start: usize,
     end: usize,
     all_digits: bool,
+    position: Position,
+    reject_numeric_leading_zero: bool,
 ) -> Result<(), SemverError> {
     if start == end {
-        return Err(SemverErrorKind::EmptyIdentifierSegment(Position::PreRelease).into());
+        return Err(SemverErrorKind::EmptyIdentifierSegment(position).into());
     }
-    if all_digits && end - start > 1 && bytes[start] == b'0' {
-        return Err(SemverErrorKind::LeadingZero(Position::PreRelease).into());
-    }
-    Ok(())
-}
-
-pub(crate) fn validate_build_metadata(s: &str) -> Result<(), SemverError> {
-    let bytes = s.as_bytes();
-    let mut segment_start = 0;
-
-    for (pos, &byte) in bytes.iter().enumerate() {
-        match byte {
-            b'.' => {
-                if pos == segment_start {
-                    return Err(
-                        SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata).into(),
-                    );
-                }
-                segment_start = pos + 1;
-            }
-            b'0'..=b'9' | b'A'..=b'Z' | b'a'..=b'z' | b'-' => {}
-            _ => {
-                return Err(unexpected_identifier_character(
-                    s,
-                    pos,
-                    segment_start,
-                    Position::BuildMetadata,
-                ));
-            }
-        }
-    }
-
-    if segment_start == bytes.len() {
-        return Err(SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata).into());
+    if reject_numeric_leading_zero && all_digits && end - start > 1 && bytes[start] == b'0' {
+        return Err(SemverErrorKind::LeadingZero(position).into());
     }
     Ok(())
 }
