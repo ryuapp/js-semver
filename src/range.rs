@@ -573,8 +573,7 @@ fn parse_simple_range(s: &str) -> Option<ComparatorSet> {
         } else {
             patch
         };
-        return (upper_component < MAX_SAFE_INTEGER)
-            .then_some(ComparatorSet::SimpleCaret(version));
+        return (upper_component < MAX_SAFE_INTEGER).then_some(ComparatorSet::SimpleCaret(version));
     }
 
     if s.as_bytes().first().is_some_and(u8::is_ascii_digit)
