@@ -87,13 +87,17 @@ impl fmt::Display for Comparator {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SimpleCaret {
+struct SimpleVersion {
     major: u64,
     minor: u64,
     patch: u64,
 }
 
-impl SimpleCaret {
+impl SimpleVersion {
+    fn version(&self) -> Version {
+        Version::new(self.major, self.minor, self.patch)
+    }
+
     fn upper(&self) -> (u64, u64, u64) {
         if self.major > 0 {
             (self.major + 1, 0, 0)
@@ -104,7 +108,12 @@ impl SimpleCaret {
         }
     }
 
-    fn test(&self, version: &Version) -> bool {
+    fn test_exact(&self, version: &Version) -> bool {
+        version.pre_release.is_empty()
+            && (version.major, version.minor, version.patch) == (self.major, self.minor, self.patch)
+    }
+
+    fn test_caret(&self, version: &Version) -> bool {
         if !version.pre_release.is_empty() {
             return false;
         }
@@ -118,7 +127,15 @@ impl SimpleCaret {
         }
     }
 
-    fn matches_comparators(&self, comparators: &[Comparator]) -> bool {
+    fn matches_exact_comparators(&self, comparators: &[Comparator]) -> bool {
+        comparators
+            == [Comparator {
+                op: Operator::Equal,
+                version: self.version(),
+            }]
+    }
+
+    fn matches_caret_comparators(&self, comparators: &[Comparator]) -> bool {
         if comparators.len() != 2 {
             return false;
         }
@@ -133,7 +150,7 @@ impl SimpleCaret {
         let expected = [
             Comparator {
                 op: Operator::GreaterThanOrEqual,
-                version: Version::new(self.major, self.minor, self.patch),
+                version: self.version(),
             },
             Comparator {
                 op: Operator::LessThan,
@@ -147,7 +164,8 @@ impl SimpleCaret {
 #[derive(Debug, Clone, Eq)]
 enum ComparatorSet {
     Comparators(Vec<Comparator>),
-    SimpleCaret(SimpleCaret),
+    SimpleCaret(SimpleVersion),
+    SimpleExact(SimpleVersion),
 }
 
 impl PartialEq for ComparatorSet {
@@ -158,11 +176,18 @@ impl PartialEq for ComparatorSet {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Comparators(left), Self::Comparators(right)) => left == right,
-            (Self::SimpleCaret(left), Self::SimpleCaret(right)) => left == right,
+            (Self::SimpleCaret(left), Self::SimpleCaret(right))
+            | (Self::SimpleExact(left), Self::SimpleExact(right)) => left == right,
             (Self::SimpleCaret(caret), Self::Comparators(comparators))
             | (Self::Comparators(comparators), Self::SimpleCaret(caret)) => {
-                caret.matches_comparators(comparators)
+                caret.matches_caret_comparators(comparators)
             }
+            (Self::SimpleExact(exact), Self::Comparators(comparators))
+            | (Self::Comparators(comparators), Self::SimpleExact(exact)) => {
+                exact.matches_exact_comparators(comparators)
+            }
+            (Self::SimpleCaret(_), Self::SimpleExact(_))
+            | (Self::SimpleExact(_), Self::SimpleCaret(_)) => false,
         }
     }
 }
@@ -176,7 +201,8 @@ impl ComparatorSet {
     fn test(&self, v: &Version) -> bool {
         let comparators = match *self {
             Self::Comparators(ref comparators) => comparators,
-            Self::SimpleCaret(ref caret) => return caret.test(v),
+            Self::SimpleCaret(ref caret) => return caret.test_caret(v),
+            Self::SimpleExact(ref exact) => return exact.test_exact(v),
         };
         if comparators.is_empty() {
             return v.pre_release.is_empty();
@@ -325,6 +351,9 @@ impl fmt::Display for Range {
                         upper_patch
                     )?;
                 }
+                ComparatorSet::SimpleExact(ref exact) => {
+                    write!(f, "{}.{}.{}", exact.major, exact.minor, exact.patch)?;
+                }
                 ComparatorSet::Comparators(ref comparators) => {
                     if comparators.is_empty() {
                         f.write_str("*")?;
@@ -468,12 +497,8 @@ fn parse_comparator_set(s: &str, normalize: bool) -> Result<ComparatorSet, Semve
         return Ok(ComparatorSet::Comparators(vec![]));
     }
 
-    if let Some(core) = s.strip_prefix('^') {
-        if core.as_bytes().last().is_some_and(u8::is_ascii_digit) {
-            if let Some(caret) = try_simple_caret(core) {
-                return Ok(ComparatorSet::SimpleCaret(caret));
-            }
-        }
+    if let Some(simple) = parse_simple_range(s) {
+        return Ok(simple);
     }
 
     let bytes = s.as_bytes();
@@ -520,25 +545,44 @@ fn parse_comparator_set(s: &str, normalize: bool) -> Result<ComparatorSet, Semve
     Ok(ComparatorSet::Comparators(all))
 }
 
-// Most ranges in package.json use caret versions, so give the common numeric form a fast path.
-fn try_simple_caret(s: &str) -> Option<SimpleCaret> {
+fn parse_simple_version(s: &str) -> Option<SimpleVersion> {
     let partial = parse_simple_partial(s)?;
     let (Some(major), Some(minor), Some(patch)) = (partial.major, partial.minor, partial.patch)
     else {
         return None;
     };
-    let upper_component = if major > 0 {
-        major
-    } else if minor > 0 {
-        minor
-    } else {
-        patch
-    };
-    (upper_component < MAX_SAFE_INTEGER).then_some(SimpleCaret {
+    Some(SimpleVersion {
         major,
         minor,
         patch,
     })
+}
+
+// Most ranges in package.json are numeric caret or exact versions, so parse them directly.
+fn parse_simple_range(s: &str) -> Option<ComparatorSet> {
+    if let Some(core) = s.strip_prefix('^') {
+        if !core.as_bytes().last().is_some_and(u8::is_ascii_digit) {
+            return None;
+        }
+        let version = parse_simple_version(core)?;
+        let (major, minor, patch) = (version.major, version.minor, version.patch);
+        let upper_component = if major > 0 {
+            major
+        } else if minor > 0 {
+            minor
+        } else {
+            patch
+        };
+        return (upper_component < MAX_SAFE_INTEGER)
+            .then_some(ComparatorSet::SimpleCaret(version));
+    }
+
+    if s.as_bytes().first().is_some_and(u8::is_ascii_digit)
+        && s.as_bytes().last().is_some_and(u8::is_ascii_digit)
+    {
+        return parse_simple_version(s).map(ComparatorSet::SimpleExact);
+    }
+    None
 }
 
 fn next_whitespace_token<'input>(

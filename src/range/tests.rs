@@ -161,7 +161,7 @@ fn helper_count_and_expand_tilde_caret_coverage() {
 }
 
 #[test]
-fn simple_caret_matches_generic_comparators() {
+fn simple_numeric_ranges_match_generic_comparators() {
     let versions = [
         "0.0.0",
         "0.0.1",
@@ -177,6 +177,15 @@ fn simple_caret_matches_generic_comparators() {
         "9007199254740990.0.0",
     ];
     for input in [
+        "0.0.0",
+        "=0.0.1",
+        "1.2.3",
+        "=1.2.3",
+        "9007199254740991.0.0",
+        "01.2.3",
+        "1.2.3-alpha",
+        "1.2.3+build",
+        "1.2",
         "^0.0.0",
         "^0.0.1",
         "^0.2.3",
@@ -221,7 +230,35 @@ fn simple_caret_matches_generic_comparators() {
 }
 
 #[test]
-fn simple_caret_equality_and_display_error() {
+fn simple_caret_matches_generic_comparators() {
+    let caret = parse_comparator_set("^1.2.3", true).unwrap();
+    assert!(matches!(caret, ComparatorSet::SimpleCaret(_)));
+    assert_eq!(caret, parse_comparator_set("^1.2.3", true).unwrap());
+    let generic_caret = parse_comparator_set("^1.2.3+build", true).unwrap();
+    assert!(matches!(generic_caret, ComparatorSet::Comparators(_)));
+    assert_eq!(caret, generic_caret);
+    assert_eq!(generic_caret, caret);
+}
+
+#[test]
+fn simple_exact_matches_generic_comparators() {
+    let caret = parse_comparator_set("^1.2.3", true).unwrap();
+    let exact = parse_comparator_set("1.2.3", true).unwrap();
+    assert!(matches!(exact, ComparatorSet::SimpleExact(_)));
+    let generic_exact = parse_comparator_set("=1.2.3", true).unwrap();
+    assert!(matches!(generic_exact, ComparatorSet::Comparators(_)));
+    assert_eq!(exact, generic_exact);
+    assert_ne!(exact, caret);
+    assert_ne!(caret, exact);
+    assert_ne!(exact, parse_comparator_set("2.0.0", true).unwrap());
+    assert_eq!(exact, parse_comparator_set("1.2.3+build", true).unwrap());
+    assert_eq!(parse_comparator_set("1.2.3+build", true).unwrap(), exact);
+    assert_ne!(caret, parse_comparator_set("1.2.3+build", true).unwrap());
+    assert_eq!(Range::parse("1.2.3 || =1.2.3+build").unwrap().set.len(), 1);
+}
+
+#[test]
+fn simple_numeric_display_error() {
     struct FailingWriter;
     impl fmt::Write for FailingWriter {
         fn write_str(&mut self, _: &str) -> fmt::Result {
@@ -229,10 +266,10 @@ fn simple_caret_equality_and_display_error() {
         }
     }
 
-    let caret = parse_comparator_set("^1.2.3", true).unwrap();
-    assert_eq!(caret, parse_comparator_set("^1.2.3", true).unwrap());
     let range = Range::parse("^1.2.3").unwrap();
     assert!(fmt::write(&mut FailingWriter, format_args!("{range}")).is_err());
+    let exact_range = Range::parse("1.2.3").unwrap();
+    assert!(fmt::write(&mut FailingWriter, format_args!("{exact_range}")).is_err());
 }
 
 #[test]
