@@ -6,6 +6,7 @@ use core::str::FromStr;
 
 use crate::error::SemverErrorKind;
 use crate::identifier::{BuildMetadata, PreRelease};
+use crate::number::MAX_SAFE_INTEGER;
 use crate::version::{Version, compare_core_and_prerelease};
 use crate::{MAX_LENGTH, SemverError};
 
@@ -21,7 +22,7 @@ use expand::{expand_caret_into, expand_hyphen, expand_primitive_into, expand_til
 use partial::{
     has_fully_qualified_numeric_core_after_full_strip, strip_build_metadata_and_find_prerelease,
 };
-use partial::{parse_partial, strip_build_metadata};
+use partial::{parse_partial, parse_simple_partial, strip_build_metadata};
 
 // --------------------------------------------------------------------------
 // Range types
@@ -86,18 +87,129 @@ impl fmt::Display for Comparator {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ComparatorSet {
-    comparators: Vec<Comparator>,
+struct SimpleVersion {
+    major: u64,
+    minor: u64,
+    patch: u64,
+}
+
+impl SimpleVersion {
+    fn version(&self) -> Version {
+        Version::new(self.major, self.minor, self.patch)
+    }
+
+    fn upper(&self) -> (u64, u64, u64) {
+        if self.major > 0 {
+            (self.major + 1, 0, 0)
+        } else if self.minor > 0 {
+            (0, self.minor + 1, 0)
+        } else {
+            (0, 0, self.patch + 1)
+        }
+    }
+
+    fn test_exact(&self, version: &Version) -> bool {
+        version.pre_release.is_empty()
+            && (version.major, version.minor, version.patch) == (self.major, self.minor, self.patch)
+    }
+
+    fn test_caret(&self, version: &Version) -> bool {
+        if !version.pre_release.is_empty() {
+            return false;
+        }
+        if self.major > 0 {
+            version.major == self.major
+                && (version.minor, version.patch) >= (self.minor, self.patch)
+        } else if self.minor > 0 {
+            version.major == 0 && version.minor == self.minor && version.patch >= self.patch
+        } else {
+            version.major == 0 && version.minor == 0 && version.patch == self.patch
+        }
+    }
+
+    fn matches_exact_comparators(&self, comparators: &[Comparator]) -> bool {
+        comparators
+            == [Comparator {
+                op: Operator::Equal,
+                version: self.version(),
+            }]
+    }
+
+    fn matches_caret_comparators(&self, comparators: &[Comparator]) -> bool {
+        if comparators.len() != 2 {
+            return false;
+        }
+        let (upper_major, upper_minor, upper_patch) = self.upper();
+        let upper = Version {
+            major: upper_major,
+            minor: upper_minor,
+            patch: upper_patch,
+            pre_release: PreRelease::zero(),
+            build: BuildMetadata::default(),
+        };
+        let expected = [
+            Comparator {
+                op: Operator::GreaterThanOrEqual,
+                version: self.version(),
+            },
+            Comparator {
+                op: Operator::LessThan,
+                version: upper,
+            },
+        ];
+        comparators == expected
+    }
+}
+
+#[derive(Debug, Clone, Eq)]
+enum ComparatorSet {
+    Comparators(Vec<Comparator>),
+    SimpleCaret(SimpleVersion),
+    SimpleExact(SimpleVersion),
+}
+
+impl PartialEq for ComparatorSet {
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Compare both borrowed enum variants without moving their contents."
+    )]
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Comparators(left), Self::Comparators(right)) => left == right,
+            (Self::SimpleCaret(left), Self::SimpleCaret(right))
+            | (Self::SimpleExact(left), Self::SimpleExact(right)) => left == right,
+            (Self::SimpleCaret(caret), Self::Comparators(comparators))
+            | (Self::Comparators(comparators), Self::SimpleCaret(caret)) => {
+                caret.matches_caret_comparators(comparators)
+            }
+            (Self::SimpleExact(exact), Self::Comparators(comparators))
+            | (Self::Comparators(comparators), Self::SimpleExact(exact)) => {
+                exact.matches_exact_comparators(comparators)
+            }
+            (Self::SimpleCaret(_), Self::SimpleExact(_))
+            | (Self::SimpleExact(_), Self::SimpleCaret(_)) => false,
+        }
+    }
 }
 
 impl ComparatorSet {
+    fn is_empty(&self) -> bool {
+        matches!(self, Self::Comparators(comparators) if comparators.is_empty())
+    }
+
+    #[expect(clippy::ref_patterns, reason = "The comparator storage is borrowed.")]
     fn test(&self, v: &Version) -> bool {
-        if self.comparators.is_empty() {
+        let comparators = match *self {
+            Self::Comparators(ref comparators) => comparators,
+            Self::SimpleCaret(ref caret) => return caret.test_caret(v),
+            Self::SimpleExact(ref exact) => return exact.test_exact(v),
+        };
+        if comparators.is_empty() {
             return v.pre_release.is_empty();
         }
 
         if v.pre_release.is_empty() {
-            for comparator in &self.comparators {
+            for comparator in comparators {
                 if !comparator.test(v) {
                     return false;
                 }
@@ -106,7 +218,7 @@ impl ComparatorSet {
         }
 
         let mut has_matching_prerelease_tuple = false;
-        for comparator in &self.comparators {
+        for comparator in comparators {
             if !comparator.test(v) {
                 return false;
             }
@@ -219,19 +331,40 @@ impl Range {
 }
 
 impl fmt::Display for Range {
+    #[expect(clippy::ref_patterns, reason = "The comparator set is borrowed.")]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (i, cs) in self.set.iter().enumerate() {
             if i > 0 {
                 f.write_str("||")?;
             }
-            if cs.comparators.is_empty() {
-                f.write_str("*")?;
-            } else {
-                for (j, c) in cs.comparators.iter().enumerate() {
-                    if j > 0 {
-                        f.write_str(" ")?;
+            match *cs {
+                ComparatorSet::SimpleCaret(ref caret) => {
+                    let (upper_major, upper_minor, upper_patch) = caret.upper();
+                    write!(
+                        f,
+                        ">={}.{}.{} <{}.{}.{}-0",
+                        caret.major,
+                        caret.minor,
+                        caret.patch,
+                        upper_major,
+                        upper_minor,
+                        upper_patch
+                    )?;
+                }
+                ComparatorSet::SimpleExact(ref exact) => {
+                    write!(f, "{}.{}.{}", exact.major, exact.minor, exact.patch)?;
+                }
+                ComparatorSet::Comparators(ref comparators) => {
+                    if comparators.is_empty() {
+                        f.write_str("*")?;
+                    } else {
+                        for (j, c) in comparators.iter().enumerate() {
+                            if j > 0 {
+                                f.write_str(" ")?;
+                            }
+                            write!(f, "{c}")?;
+                        }
                     }
-                    write!(f, "{c}")?;
                 }
             }
         }
@@ -283,7 +416,7 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
     let group_count = count_or_groups(bytes);
     if group_count == 1 {
         let comparator_set = parse_comparator_set(s, !exceeds_max_length)?;
-        if !comparator_set.comparators.is_empty() && exceeds_max_length {
+        if !comparator_set.is_empty() && exceeds_max_length {
             return Err(SemverErrorKind::MaxLengthExceeded.into());
         }
         return Ok(Range {
@@ -309,9 +442,7 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
         !exceeds_max_length,
     )?);
 
-    let has_unbounded_set = set
-        .iter()
-        .any(|comparator_set| comparator_set.comparators.is_empty());
+    let has_unbounded_set = set.iter().any(ComparatorSet::is_empty);
 
     if has_unbounded_set && set.len() > 1 && exceeds_max_length {
         return Err(SemverErrorKind::MaxLengthExceeded.into());
@@ -319,9 +450,7 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
 
     if has_unbounded_set {
         return Ok(Range {
-            set: ComparatorSets::One(ComparatorSet {
-                comparators: vec![],
-            }),
+            set: ComparatorSets::One(ComparatorSet::Comparators(vec![])),
         });
     }
 
@@ -365,20 +494,22 @@ fn range_len_without_build_metadata(s: &str) -> usize {
 
 fn parse_comparator_set(s: &str, normalize: bool) -> Result<ComparatorSet, SemverError> {
     if s.is_empty() || s == "*" {
-        return Ok(ComparatorSet {
-            comparators: vec![],
-        });
+        return Ok(ComparatorSet::Comparators(vec![]));
+    }
+
+    if let Some(simple) = parse_simple_range(s) {
+        return Ok(simple);
     }
 
     let bytes = s.as_bytes();
     if !bytes.iter().any(u8::is_ascii_whitespace) {
         let mut comparators = Vec::with_capacity(2);
         parse_token_into(&mut comparators, s)?;
-        return Ok(ComparatorSet { comparators });
+        return Ok(ComparatorSet::Comparators(comparators));
     }
 
     if let Some(comps) = try_hyphen(s)? {
-        return Ok(ComparatorSet { comparators: comps });
+        return Ok(ComparatorSet::Comparators(comps));
     }
 
     let mut all = if normalize {
@@ -411,7 +542,46 @@ fn parse_comparator_set(s: &str, normalize: bool) -> Result<ComparatorSet, Semve
             parse_set_token_into(&mut all, t, normalize)?;
         }
     }
-    Ok(ComparatorSet { comparators: all })
+    Ok(ComparatorSet::Comparators(all))
+}
+
+fn parse_simple_version(s: &str) -> Option<SimpleVersion> {
+    let partial = parse_simple_partial(s)?;
+    let (Some(major), Some(minor), Some(patch)) = (partial.major, partial.minor, partial.patch)
+    else {
+        return None;
+    };
+    Some(SimpleVersion {
+        major,
+        minor,
+        patch,
+    })
+}
+
+// Most ranges in package.json are numeric caret or exact versions, so parse them directly.
+fn parse_simple_range(s: &str) -> Option<ComparatorSet> {
+    if let Some(core) = s.strip_prefix('^') {
+        if !core.as_bytes().last().is_some_and(u8::is_ascii_digit) {
+            return None;
+        }
+        let version = parse_simple_version(core)?;
+        let (major, minor, patch) = (version.major, version.minor, version.patch);
+        let upper_component = if major > 0 {
+            major
+        } else if minor > 0 {
+            minor
+        } else {
+            patch
+        };
+        return (upper_component < MAX_SAFE_INTEGER).then_some(ComparatorSet::SimpleCaret(version));
+    }
+
+    if s.as_bytes().first().is_some_and(u8::is_ascii_digit)
+        && s.as_bytes().last().is_some_and(u8::is_ascii_digit)
+    {
+        return parse_simple_version(s).map(ComparatorSet::SimpleExact);
+    }
+    None
 }
 
 fn next_whitespace_token<'input>(
