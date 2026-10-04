@@ -41,7 +41,7 @@ impl PreRelease {
         Ok(Self(IdentifierText::new(s)))
     }
 
-    #[must_use]
+    #[must_use = "checking for pre-release identifiers has no effect unless the result is used"]
     /// Returns `true` when there are no pre-release identifiers.
     ///
     /// # Examples
@@ -122,7 +122,7 @@ impl BuildMetadata {
         Ok(Self(IdentifierText::new(s)))
     }
 
-    #[must_use]
+    #[must_use = "checking for build metadata has no effect unless the result is used"]
     /// Returns `true` when there is no build metadata.
     ///
     /// # Examples

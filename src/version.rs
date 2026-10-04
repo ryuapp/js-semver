@@ -62,7 +62,7 @@ impl Version {
     /// assert!(version.pre_release.is_empty());
     /// assert!(version.build.is_empty());
     /// ```
-    #[must_use]
+    #[must_use = "the constructed version should be used"]
     pub fn new(major: u64, minor: u64, patch: u64) -> Self {
         Self {
             major,
@@ -123,7 +123,7 @@ impl Version {
     /// assert_eq!(left.cmp(&right), Ordering::Equal);
     /// assert_eq!(left.cmp_build(&right), Ordering::Less);
     /// ```
-    #[must_use]
+    #[must_use = "comparing versions has no effect unless the result is used"]
     pub fn cmp_build(&self, other: &Self) -> Ordering {
         match compare_core_and_prerelease(self, other) {
             Ordering::Equal => self.build.cmp(&other.build),

@@ -319,7 +319,7 @@ impl Range {
     /// assert!(range.satisfies(&Version::parse("1.5.0").unwrap()));
     /// assert!(!range.satisfies(&Version::parse("2.0.0").unwrap()));
     /// ```
-    #[must_use]
+    #[must_use = "checking whether a version satisfies a range has no effect unless the result is used"]
     pub fn satisfies(&self, version: &Version) -> bool {
         for comparator_set in self.set.iter() {
             if comparator_set.test(version) {
