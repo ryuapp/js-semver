@@ -120,7 +120,7 @@ pub(super) fn strip_build_metadata_and_find_prerelease(
     Ok((s, pre_separator))
 }
 
-fn parse_simple_partial(s: &str) -> Option<Partial> {
+pub(super) fn parse_simple_partial(s: &str) -> Option<Partial> {
     let bytes = s.as_bytes();
     let (major, mut pos) = parse_simple_component(bytes, 0)?;
     let mut minor = None;

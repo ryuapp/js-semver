@@ -161,6 +161,118 @@ fn helper_count_and_expand_tilde_caret_coverage() {
 }
 
 #[test]
+fn simple_numeric_ranges_match_generic_comparators() {
+    let versions = [
+        "0.0.0",
+        "0.0.1",
+        "0.0.2",
+        "0.2.3",
+        "0.2.4",
+        "0.3.0",
+        "1.2.3",
+        "1.2.4",
+        "1.9.0",
+        "2.0.0",
+        "1.2.4-rc.1",
+        "9007199254740990.0.0",
+    ];
+    for input in [
+        "0.0.0",
+        "=0.0.1",
+        "1.2.3",
+        "=1.2.3",
+        "9007199254740991.0.0",
+        "01.2.3",
+        "1.2.3-alpha",
+        "1.2.3+build",
+        "1.2",
+        "^0.0.0",
+        "^0.0.1",
+        "^0.2.3",
+        "^1.2.3",
+        "^9007199254740990.0.0",
+        "^0.9007199254740990.0",
+        "^0.0.9007199254740990",
+        "^9007199254740991.0.0",
+        "^0.9007199254740991.0",
+        "^0.0.9007199254740991",
+        "^01.2.3",
+        "^1.2.3-alpha",
+        "^1.2.3+build",
+        "^1.2",
+    ] {
+        let actual = parse_comparator_set(input, true);
+        let mut generic = Vec::with_capacity(2);
+        let generic_result = parse_token_into(&mut generic, input);
+        assert_eq!(
+            actual,
+            generic_result.map(|()| ComparatorSet::Comparators(generic.clone())),
+            "equality for {input}"
+        );
+        if let Ok(actual) = actual {
+            let actual = Range {
+                set: ComparatorSets::One(actual),
+            };
+            let expected = Range {
+                set: ComparatorSets::One(ComparatorSet::Comparators(generic)),
+            };
+            assert_eq!(actual.to_string(), expected.to_string(), "{input}");
+            for version in versions {
+                let version = Version::parse(version).unwrap();
+                assert_eq!(
+                    actual.satisfies(&version),
+                    expected.satisfies(&version),
+                    "{input}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn simple_caret_matches_generic_comparators() {
+    let caret = parse_comparator_set("^1.2.3", true).unwrap();
+    assert!(matches!(caret, ComparatorSet::SimpleCaret(_)));
+    assert_eq!(caret, parse_comparator_set("^1.2.3", true).unwrap());
+    let generic_caret = parse_comparator_set("^1.2.3+build", true).unwrap();
+    assert!(matches!(generic_caret, ComparatorSet::Comparators(_)));
+    assert_eq!(caret, generic_caret);
+    assert_eq!(generic_caret, caret);
+}
+
+#[test]
+fn simple_exact_matches_generic_comparators() {
+    let caret = parse_comparator_set("^1.2.3", true).unwrap();
+    let exact = parse_comparator_set("1.2.3", true).unwrap();
+    assert!(matches!(exact, ComparatorSet::SimpleExact(_)));
+    let generic_exact = parse_comparator_set("=1.2.3", true).unwrap();
+    assert!(matches!(generic_exact, ComparatorSet::Comparators(_)));
+    assert_eq!(exact, generic_exact);
+    assert_ne!(exact, caret);
+    assert_ne!(caret, exact);
+    assert_ne!(exact, parse_comparator_set("2.0.0", true).unwrap());
+    assert_eq!(exact, parse_comparator_set("1.2.3+build", true).unwrap());
+    assert_eq!(parse_comparator_set("1.2.3+build", true).unwrap(), exact);
+    assert_ne!(caret, parse_comparator_set("1.2.3+build", true).unwrap());
+    assert_eq!(Range::parse("1.2.3 || =1.2.3+build").unwrap().set.len(), 1);
+}
+
+#[test]
+fn simple_numeric_display_error() {
+    struct FailingWriter;
+    impl fmt::Write for FailingWriter {
+        fn write_str(&mut self, _: &str) -> fmt::Result {
+            Err(fmt::Error)
+        }
+    }
+
+    let range = Range::parse("^1.2.3").unwrap();
+    assert!(fmt::write(&mut FailingWriter, format_args!("{range}")).is_err());
+    let exact_range = Range::parse("1.2.3").unwrap();
+    assert!(fmt::write(&mut FailingWriter, format_args!("{exact_range}")).is_err());
+}
+
+#[test]
 fn helper_build_metadata_stripping_and_length_coverage() {
     assert!(has_fully_qualified_numeric_core_after_full_strip("v1.2.3"));
     assert!(!has_fully_qualified_numeric_core_after_full_strip("v1.2.x"));
@@ -468,9 +580,7 @@ fn public_and_comparator_helpers_are_used_in_crate_tests() {
         op: Operator::LessThan,
         version: Version::parse("2.0.0").unwrap(),
     };
-    let set = ComparatorSet {
-        comparators: vec![eq.clone(), lt.clone()],
-    };
+    let set = ComparatorSet::Comparators(vec![eq.clone(), lt.clone()]);
     let range = Range::parse("1.2.3").unwrap();
 
     assert!(eq.test(&version));
@@ -510,49 +620,39 @@ fn comparator_set_test_covers_release_and_prerelease_paths() {
     let next_release = Version::parse("1.2.4").unwrap();
     let matching_pre = Version::parse("1.2.3-alpha.0").unwrap();
 
-    let empty = ComparatorSet {
-        comparators: Vec::new(),
-    };
+    let empty = ComparatorSet::Comparators(Vec::new());
     assert!(empty.test(&release));
     assert!(!empty.test(&prerelease));
 
-    let release_ok = ComparatorSet {
-        comparators: vec![Comparator {
-            op: Operator::Equal,
-            version: release.clone(),
-        }],
-    };
+    let release_ok = ComparatorSet::Comparators(vec![Comparator {
+        op: Operator::Equal,
+        version: release.clone(),
+    }]);
     assert!(release_ok.test(&release));
     assert!(!release_ok.test(&next_release));
 
-    let prerelease_without_match = ComparatorSet {
-        comparators: vec![Comparator {
-            op: Operator::GreaterThanOrEqual,
-            version: release.clone(),
-        }],
-    };
+    let prerelease_without_match = ComparatorSet::Comparators(vec![Comparator {
+        op: Operator::GreaterThanOrEqual,
+        version: release.clone(),
+    }]);
     assert!(!prerelease_without_match.test(&prerelease));
 
-    let prerelease_passes_but_tuple_does_not_match = ComparatorSet {
-        comparators: vec![
-            Comparator {
-                op: Operator::GreaterThan,
-                version: Version::parse("1.0.0").unwrap(),
-            },
-            Comparator {
-                op: Operator::LessThanOrEqual,
-                version: Version::parse("2.0.0").unwrap(),
-            },
-        ],
-    };
+    let prerelease_passes_but_tuple_does_not_match = ComparatorSet::Comparators(vec![
+        Comparator {
+            op: Operator::GreaterThan,
+            version: Version::parse("1.0.0").unwrap(),
+        },
+        Comparator {
+            op: Operator::LessThanOrEqual,
+            version: Version::parse("2.0.0").unwrap(),
+        },
+    ]);
     assert!(!prerelease_passes_but_tuple_does_not_match.test(&prerelease));
 
-    let prerelease_with_match = ComparatorSet {
-        comparators: vec![Comparator {
-            op: Operator::GreaterThanOrEqual,
-            version: matching_pre,
-        }],
-    };
+    let prerelease_with_match = ComparatorSet::Comparators(vec![Comparator {
+        op: Operator::GreaterThanOrEqual,
+        version: matching_pre,
+    }]);
     assert!(prerelease_with_match.test(&prerelease));
 }
 
