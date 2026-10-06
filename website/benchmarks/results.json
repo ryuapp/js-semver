@@ -1,23 +1,23 @@
 {
-  "generatedAt": "2026-09-26T16:11:37.519Z",
+  "generatedAt": "2026-10-06T13:58:43.772Z",
   "native": {
     "jsSemverVersion": "1.0.0",
     "nodeSemverVersion": "2.2.0",
     "rows": [
       {
         "label": "Parse version",
-        "jsSemverNs": 7.780903090309031,
-        "nodeSemverNs": 115.136793013308
+        "jsSemverNs": 9.22828125,
+        "nodeSemverNs": 142.659375
       },
       {
         "label": "Parse range",
-        "jsSemverNs": 83.29420823317307,
-        "nodeSemverNs": 543.7334437086092
+        "jsSemverNs": 20.195367209383754,
+        "nodeSemverNs": 595.5716145833334
       },
       {
         "label": "Parse + Satisfies",
-        "jsSemverNs": 267.000956632653,
-        "nodeSemverNs": 966.3726635514018
+        "jsSemverNs": 322.9783313679245,
+        "nodeSemverNs": 1367.514534883721
       }
     ]
   }
