@@ -83,6 +83,9 @@ impl Clone for IdentifierText {
 }
 
 impl Drop for IdentifierText {
+    // Allow callers in other crates to inline the tag check and avoid two
+    // destructor calls for versions with empty or short metadata.
+    #[inline]
     fn drop(&mut self) {
         if !self.is_inline() {
             // SAFETY: The heap field was produced by Box::into_raw and this
