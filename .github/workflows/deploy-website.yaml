@@ -1,3 +1,5 @@
+# This workflow is managed by gh actions-lock.
+
 name: Deploy Website
 
 on:
@@ -26,7 +28,7 @@ jobs:
       }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@v2.21.0
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -39,14 +41,14 @@ jobs:
             index.crates.io:443
             static.crates.io:443
             static.rust-lang.org:443
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+      - uses: denoland/setup-deno@v2.0.5
         with:
           deno-version: v2.x
           cache: true
-      - uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
         with:
           target: wasm32-unknown-unknown
       - uses: jdx/mise-action@9149ea85001c7435d5a66bb127d6a1b6227cb0a5 # v5.0.0
@@ -55,7 +57,7 @@ jobs:
         run: deno task build
         env:
           VITE_COMMIT_HASH: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      - uses: actions/upload-pages-artifact@v5.0.0
         with:
           path: website/dist
 
@@ -67,10 +69,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        uses: step-security/harden-runner@v2.21.0
         with:
           egress-policy: block
           allowed-endpoints: >
             api.github.com:443
       - id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        uses: actions/deploy-pages@v5.0.1
