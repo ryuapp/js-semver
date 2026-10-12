@@ -10,7 +10,7 @@ workflows:
         - 'denoland/setup-deno@v2.0.5'
         - 'docker/build-push-action@v7.4.0'
         - 'docker/setup-buildx-action@v4.4.1'
-        - 'jdx/mise-action@v4.2.5'
+        - 'jdx/mise-action@v5.0.0'
         - 'step-security/harden-runner@v2.21.0'
     '.github/workflows/deploy-website.yaml':
         - 'actions-rust-lang/setup-rust-toolchain@v2.0.0'
@@ -18,7 +18,7 @@ workflows:
         - 'actions/deploy-pages@v5.0.1'
         - 'actions/upload-pages-artifact@v5.0.0'
         - 'denoland/setup-deno@v2.0.5'
-        - 'jdx/mise-action@v4.2.5'
+        - 'jdx/mise-action@v5.0.0'
         - 'step-security/harden-runner@v2.21.0'
     '.github/workflows/release.yaml':
         - 'actions-rust-lang/setup-rust-toolchain@v2.0.0'
@@ -82,9 +82,9 @@ dependencies:
         commit: 'sha1-f87e5991a6d7451dcb8d9637bfbc97413f497069'
         owner_id: 5429470
         repo_id: 288485773
-    'jdx/mise-action@v4.2.5':
-        ref: 'v4.2.5'
-        commit: 'sha1-3c2e0cf82a5b2e5249f0d3635a4d83d0ae861518'
+    'jdx/mise-action@v5.0.0':
+        ref: 'v5.0.0'
+        commit: 'sha1-9149ea85001c7435d5a66bb127d6a1b6227cb0a5'
         owner_id: 216188
         repo_id: 738284564
     'rust-lang/crates-io-auth-action@v1.0.5':
