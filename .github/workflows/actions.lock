@@ -11,7 +11,7 @@ workflows:
         - 'docker/build-push-action@v7.4.0'
         - 'docker/setup-buildx-action@v4.4.1'
         - 'jdx/mise-action@v5.1.1'
-        - 'step-security/harden-runner@v2.22.0'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/deploy-website.yaml':
         - 'actions-rust-lang/setup-rust-toolchain@v2.0.0'
         - 'actions/checkout@v7.0.1'
@@ -19,12 +19,12 @@ workflows:
         - 'actions/upload-pages-artifact@v5.0.0'
         - 'denoland/setup-deno@v2.0.5'
         - 'jdx/mise-action@v5.1.1'
-        - 'step-security/harden-runner@v2.22.0'
+        - 'step-security/harden-runner@v2.22.1'
     '.github/workflows/release.yaml':
         - 'actions-rust-lang/setup-rust-toolchain@v2.0.0'
         - 'actions/checkout@v7.0.1'
         - 'rust-lang/crates-io-auth-action@v1.0.5'
-        - 'step-security/harden-runner@v2.22.0'
+        - 'step-security/harden-runner@v2.22.1'
 dependencies:
     'actions-rust-lang/setup-rust-toolchain@v2.0.0':
         ref: 'v2.0.0'
@@ -92,9 +92,9 @@ dependencies:
         commit: 'sha1-c6f97d42243bad5fab37ca0427f495c86d5b1a18'
         owner_id: 5430905
         repo_id: 1008931044
-    'step-security/harden-runner@v2.22.0':
-        ref: 'v2.22.0'
-        commit: 'sha1-351661ca32ac09a36dc5ee2d536e3128f2a3c8ed'
+    'step-security/harden-runner@v2.22.1':
+        ref: 'v2.22.1'
+        commit: 'sha1-ccd8616d44fd3846e67624a50d5aad6d37bf2d25'
         owner_id: 88700172
         repo_id: 422287306
     'swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6':
