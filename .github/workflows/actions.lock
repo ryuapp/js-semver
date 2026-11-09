@@ -23,7 +23,7 @@ workflows:
     '.github/workflows/release.yaml':
         - 'actions-rust-lang/setup-rust-toolchain@v2.0.0'
         - 'actions/checkout@v7.0.1'
-        - 'rust-lang/crates-io-auth-action@v1.0.5'
+        - 'rust-lang/crates-io-auth-action@v1.0.6'
         - 'step-security/harden-runner@v2.22.1'
 dependencies:
     'actions-rust-lang/setup-rust-toolchain@v2.0.0':
@@ -87,9 +87,9 @@ dependencies:
         commit: 'sha1-08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8'
         owner_id: 216188
         repo_id: 738284564
-    'rust-lang/crates-io-auth-action@v1.0.5':
-        ref: 'v1.0.5'
-        commit: 'sha1-c6f97d42243bad5fab37ca0427f495c86d5b1a18'
+    'rust-lang/crates-io-auth-action@v1.0.6':
+        ref: 'v1.0.6'
+        commit: 'sha1-3268eb413133e2960fa4ae0e963ca76380c54cd9'
         owner_id: 5430905
         repo_id: 1008931044
     'step-security/harden-runner@v2.22.1':

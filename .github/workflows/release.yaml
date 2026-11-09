@@ -28,7 +28,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
         with:
           rustflags: ""
-      - uses: rust-lang/crates-io-auth-action@v1.0.5
+      - uses: rust-lang/crates-io-auth-action@v1.0.6
         id: auth
 
       - name: Publish to crates.io
