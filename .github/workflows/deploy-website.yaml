@@ -40,6 +40,7 @@ jobs:
             static.crates.io:443
             static.rust-lang.org:443
             mise.jdx.dev:443
+            tuf-repo-cdn.sigstore.dev:443
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
