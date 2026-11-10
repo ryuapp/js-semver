@@ -5,7 +5,7 @@ use crate::SemverError;
 use crate::error::{Position, SemverErrorKind};
 use crate::identifier::{BuildMetadata, PreRelease};
 use crate::number::MAX_SAFE_INTEGER;
-use crate::version::{Version, compare_core_and_prerelease};
+use crate::version::Version;
 
 use super::{Comparator, Operator, Partial};
 
@@ -318,6 +318,9 @@ pub(super) fn expand_hyphen(a: Partial, b: Partial) -> Result<Vec<Comparator>, S
 }
 
 fn push_canonical_comparator(all: &mut Vec<Comparator>, new: Comparator) {
+    if new.op == Operator::GreaterThanOrEqual && new.version == Version::new(0, 0, 0) {
+        return;
+    }
     if is_impossible_comparator(&new) {
         all.clear();
         all.push(new);
@@ -327,28 +330,21 @@ fn push_canonical_comparator(all: &mut Vec<Comparator>, new: Comparator) {
         if is_impossible_comparator(existing) {
             return;
         }
+        if *existing == new {
+            return;
+        }
         match (existing.op, new.op) {
             (
                 Operator::LessThan | Operator::LessThanOrEqual,
                 Operator::LessThan | Operator::LessThanOrEqual,
             ) if existing.version.major == new.version.major
                 && existing.version.minor == new.version.minor
-                && existing.version.patch == new.version.patch =>
+                && existing.version.patch == new.version.patch
+                && existing.version.pre_release == new.version.pre_release =>
             {
-                let ordering = compare_core_and_prerelease(&existing.version, &new.version);
-                if ordering == core::cmp::Ordering::Greater
-                    || (ordering == core::cmp::Ordering::Equal
-                        && existing.op == Operator::LessThanOrEqual
-                        && new.op == Operator::LessThan)
-                {
+                if existing.op == Operator::LessThanOrEqual && new.op == Operator::LessThan {
                     *existing = new;
                 }
-                return;
-            }
-            (Operator::Equal, Operator::Equal)
-                if compare_core_and_prerelease(&existing.version, &new.version)
-                    == core::cmp::Ordering::Equal =>
-            {
                 return;
             }
             _ => {}
@@ -357,7 +353,7 @@ fn push_canonical_comparator(all: &mut Vec<Comparator>, new: Comparator) {
     all.push(new);
 }
 
-fn is_impossible_comparator(comparator: &Comparator) -> bool {
+pub(super) fn is_impossible_comparator(comparator: &Comparator) -> bool {
     comparator.op == Operator::LessThan
         && comparator.version.major == 0
         && comparator.version.minor == 0

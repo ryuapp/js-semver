@@ -5,7 +5,7 @@ Where third-party code or data is included, a comment is provided at the top of 
 
 ## node-semver
 
-Source: https://github.com/npm/node-semver/tree/6e05b7637396ac66522cff8731f07cfe0ef49a29
+Source: https://github.com/npm/node-semver/tree/b37b033b585ad5e575afeccadb426ea41bc6cea4
 
 ### License
 
