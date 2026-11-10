@@ -40,6 +40,7 @@ jobs:
             static.crates.io:443
             static.rust-lang.org:443
             mise.jdx.dev:443
+            tuf-repo-cdn.sigstore.dev:443
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
@@ -50,7 +51,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
         with:
           target: wasm32-unknown-unknown
-      - uses: jdx/mise-action@v5.1.2
+      - uses: jdx/mise-action@v5.2.4
       - name: Build website
         working-directory: website
         run: deno task build
