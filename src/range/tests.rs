@@ -669,6 +669,38 @@ fn helper_expand_error_paths() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
+fn long_whitespace_and_build_metadata_preserve_range_validation() {
+    for length in [256, 65_536] {
+        for whitespace in ["\t", "\x0b", "\u{feff}", "\u{2003}"] {
+            let padding = whitespace.repeat(length);
+            let input = format!("{padding}^{padding}+build{padding}1{padding}");
+            assert_eq!(
+                Range::parse(&input).unwrap().to_string(),
+                ">=1.0.0 <2.0.0-0"
+            );
+        }
+
+        let build = "a".repeat(length);
+        assert_eq!(
+            Range::parse(&format!("^ +{build} 1")).unwrap().to_string(),
+            ">=1.0.0 <2.0.0-0"
+        );
+        assert_eq!(
+            Range::parse(&format!("^ +{build}! 1")).unwrap_err(),
+            SemverError::from(SemverErrorKind::UnexpectedCharacterAfter(
+                '!',
+                Position::BuildMetadata
+            ))
+        );
+        assert_eq!(
+            Range::parse(&format!("1.2.3 +{build} = 1.2.3")).unwrap_err(),
+            SemverError::from(SemverErrorKind::MissingVersionAfterOperator("="))
+        );
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
 fn oversized_comparator_sets_skip_quadratic_normalization() {
     let input = ">=1.0.0 ".repeat(20_000);
     assert!(parse_range(&input).is_err());
