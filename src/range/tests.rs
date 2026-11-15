@@ -1,7 +1,114 @@
 #[cfg(not(feature = "std"))]
-use alloc::string::ToString;
+use alloc::{format, string::ToString};
 
 use super::*;
+use crate::error::Position;
+
+#[test]
+fn range_whitespace_follows_ecmascript_rules() {
+    // RegExp \s matches WhiteSpace and LineTerminator:
+    // https://tc39.es/ecma262/#prod-CharacterClassEscape
+    // https://tc39.es/ecma262/#sec-white-space
+    // https://tc39.es/ecma262/#sec-line-terminators
+    for whitespace in [
+        '\t', '\n', '\u{000b}', '\u{000c}', '\r', ' ', '\u{00a0}', '\u{1680}', '\u{2000}',
+        '\u{2001}', '\u{2002}', '\u{2003}', '\u{2004}', '\u{2005}', '\u{2006}', '\u{2007}',
+        '\u{2008}', '\u{2009}', '\u{200a}', '\u{2028}', '\u{2029}', '\u{202f}', '\u{205f}',
+        '\u{3000}', '\u{feff}',
+    ] {
+        let input = format!("{whitespace}1.2{whitespace}{whitespace}-{whitespace}2.3{whitespace}");
+        assert_eq!(
+            Range::parse(&input).unwrap().to_string(),
+            ">=1.2.0 <2.4.0-0",
+            "input: {input:?}"
+        );
+        assert_eq!(
+            Range::parse(&whitespace.to_string()).unwrap().to_string(),
+            "*"
+        );
+    }
+    assert!(Range::parse("1.2\u{0085}-\u{0085}2.3").is_err());
+}
+
+#[test]
+fn standalone_build_metadata_errors_are_preserved() {
+    let cases = [
+        (
+            ">= 1 +",
+            SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata),
+        ),
+        (
+            ">= 1 +bad!",
+            SemverErrorKind::UnexpectedCharacterAfter('!', Position::BuildMetadata),
+        ),
+        (
+            ">= 1 +build..1",
+            SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata),
+        ),
+        (
+            "~ +",
+            SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata),
+        ),
+        (
+            "~> +",
+            SemverErrorKind::EmptyIdentifierSegment(Position::BuildMetadata),
+        ),
+        (
+            "^ +bad!",
+            SemverErrorKind::UnexpectedCharacterAfter('!', Position::BuildMetadata),
+        ),
+        (
+            "~ +build",
+            SemverErrorKind::MissingVersionAfterOperator("~"),
+        ),
+        (
+            "~> +build",
+            SemverErrorKind::MissingVersionAfterOperator("~"),
+        ),
+        (
+            "^ +build",
+            SemverErrorKind::MissingVersionAfterOperator("^"),
+        ),
+    ];
+
+    for (input, expected) in cases {
+        assert_eq!(
+            Range::parse(input).unwrap_err(),
+            SemverError::from(expected),
+            "input: {input:?}"
+        );
+    }
+}
+
+#[test]
+fn misplaced_build_metadata_is_rejected_even_with_unbounded_alternatives() {
+    for input in [
+        "1 +a +b = 2",
+        "1.2.3 +build = 1.2.3",
+        "1.2.3-dev +build = 1.2.3-dev",
+        "+build 1.2.3",
+        "1.2.3 +build || *",
+        "* || 1.2.3 +build",
+    ] {
+        assert_eq!(
+            Range::parse(input).unwrap_err(),
+            SemverError::from(SemverErrorKind::MissingVersionAfterOperator("=")),
+            "input: {input:?}"
+        );
+    }
+}
+
+#[test]
+fn normalized_whitespace_does_not_hide_missing_comparator_versions() {
+    for operator in [">", ">=", "<", "<=", "=", "^", "~"] {
+        let input = format!("{operator}\u{feff}\t\n");
+        assert_eq!(
+            Range::parse(&input).unwrap_err(),
+            SemverError::from(SemverErrorKind::MissingVersionAfterOperator(operator)),
+            "input: {input:?}"
+        );
+    }
+}
 
 #[test]
 fn parse_errors_include_the_cause_and_position() {
@@ -562,9 +669,47 @@ fn helper_expand_error_paths() {
 
 #[test]
 #[cfg_attr(miri, ignore)]
+fn long_whitespace_and_build_metadata_preserve_range_validation() {
+    for length in [256, 65_536] {
+        for whitespace in ["\t", "\x0b", "\u{feff}", "\u{2003}"] {
+            let padding = whitespace.repeat(length);
+            let input = format!("{padding}^{padding}+build{padding}1{padding}");
+            assert_eq!(
+                Range::parse(&input).unwrap().to_string(),
+                ">=1.0.0 <2.0.0-0"
+            );
+        }
+
+        let build = "a".repeat(length);
+        assert_eq!(
+            Range::parse(&format!("^ +{build} 1")).unwrap().to_string(),
+            ">=1.0.0 <2.0.0-0"
+        );
+        assert_eq!(
+            Range::parse(&format!("^ +{build}! 1")).unwrap_err(),
+            SemverError::from(SemverErrorKind::UnexpectedCharacterAfter(
+                '!',
+                Position::BuildMetadata
+            ))
+        );
+        assert_eq!(
+            Range::parse(&format!("1.2.3 +{build} = 1.2.3")).unwrap_err(),
+            SemverError::from(SemverErrorKind::MissingVersionAfterOperator("="))
+        );
+    }
+}
+
+#[test]
+#[cfg_attr(miri, ignore)]
 fn oversized_comparator_sets_skip_quadratic_normalization() {
     let input = ">=1.0.0 ".repeat(20_000);
     assert!(parse_range(&input).is_err());
+
+    let invalid_tail = format!("{}1.x.5", ">=1.0.0 ".repeat(40));
+    assert_eq!(
+        parse_range(&invalid_tail).unwrap_err().to_string(),
+        "unexpected character after wildcard in version range"
+    );
 }
 
 #[test]

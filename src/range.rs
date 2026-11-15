@@ -1,5 +1,5 @@
 #[cfg(not(feature = "std"))]
-use alloc::{vec, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 
 use core::fmt;
 use core::str::FromStr;
@@ -403,8 +403,9 @@ impl Partial {
 // Range parsing
 // --------------------------------------------------------------------------
 
-fn parse_range(s: &str) -> Result<Range, SemverError> {
-    let s = s.trim();
+fn parse_range(input: &str) -> Result<Range, SemverError> {
+    let normalized = normalize_range_whitespace(input);
+    let s = normalized.as_deref().unwrap_or(input).trim();
     let exceeds_max_length =
         s.len() > MAX_LENGTH && range_len_without_build_metadata(s) > MAX_LENGTH && {
             let trimmed_prefix = s.trim_start_matches(['v', '=', '^', '~', '>', '<']);
@@ -458,6 +459,9 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
         return Err(SemverErrorKind::MaxLengthExceeded.into());
     }
 
+    if set.iter().any(|group| !is_null_set(group)) {
+        set.retain(|group| !is_null_set(group));
+    }
     set.dedup();
 
     if set.len() == 1 {
@@ -470,6 +474,32 @@ fn parse_range(s: &str) -> Result<Range, SemverError> {
     Ok(Range {
         set: ComparatorSets::Many(set),
     })
+}
+
+fn is_null_set(set: &ComparatorSet) -> bool {
+    matches!(set, ComparatorSet::Comparators(comparators)
+        if comparators.iter().any(expand::is_impossible_comparator))
+}
+
+fn normalize_range_whitespace(s: &str) -> Option<String> {
+    if s.is_ascii()
+        && !s
+            .as_bytes()
+            .iter()
+            .any(|byte| (byte.is_ascii_whitespace() && *byte != b' ') || *byte == b'\x0b')
+    {
+        return None;
+    }
+    let mut normalized = String::with_capacity(s.len());
+    for token in s.split(|ch: char| (ch.is_whitespace() && ch != '\u{0085}') || ch == '\u{feff}') {
+        if !token.is_empty() {
+            if !normalized.is_empty() {
+                normalized.push(' ');
+            }
+            normalized.push_str(token);
+        }
+    }
+    Some(normalized)
 }
 
 fn range_len_without_build_metadata(s: &str) -> usize {
@@ -518,10 +548,25 @@ fn parse_comparator_set(s: &str, normalize: bool) -> Result<ComparatorSet, Semve
         Vec::with_capacity(1)
     };
     let mut pos = 0;
+    let mut skip_build = false;
     while let Some(t) = next_whitespace_token(s, bytes, &mut pos) {
+        if t.starts_with('+') {
+            if !skip_build {
+                return Err(SemverErrorKind::MissingVersionAfterOperator("=").into());
+            }
+            strip_build_metadata(t)?;
+            continue;
+        }
+        skip_build = false;
         let is_op_only = matches!(t, ">" | ">=" | "<" | "<=" | "=" | "^" | "~" | "~=" | "~>");
         if is_op_only {
-            if let Some(next) = next_whitespace_token(s, bytes, &mut pos) {
+            let mut next = next_whitespace_token(s, bytes, &mut pos);
+            while next.is_some_and(|token| token.starts_with('+')) && matches!(t, "^" | "~" | "~>")
+            {
+                strip_build_metadata(next.unwrap_or_default())?;
+                next = next_whitespace_token(s, bytes, &mut pos);
+            }
+            if let Some(next) = next {
                 let mut buf: [u8; 258] = [0; 258];
                 let op = t.as_bytes();
                 let ver = strip_build_metadata(next)?.as_bytes();
@@ -535,6 +580,8 @@ fn parse_comparator_set(s: &str, normalize: bool) -> Result<ComparatorSet, Semve
                 // valid UTF-8 after concatenation as well.
                 let merged = unsafe { core::str::from_utf8_unchecked(&buf[..len]) };
                 parse_set_token_into(&mut all, merged, normalize)?;
+                skip_build =
+                    parse_simple_partial(next).is_some_and(|partial| partial.patch.is_none());
             } else {
                 parse_set_token_into(&mut all, t, normalize)?;
             }
@@ -566,6 +613,9 @@ fn parse_simple_range(s: &str) -> Option<ComparatorSet> {
         }
         let version = parse_simple_version(core)?;
         let (major, minor, patch) = (version.major, version.minor, version.patch);
+        if (major, minor, patch) == (0, 0, 0) {
+            return None;
+        }
         let upper_component = if major > 0 {
             major
         } else if minor > 0 {

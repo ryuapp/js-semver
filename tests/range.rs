@@ -43,10 +43,22 @@ fn assert_invalid_range(input: &str) {
 }
 
 fn assert_non_matching_invalid_version(range: &str, version: &str) {
-    let range = r(range);
-    let version = Version::parse(version);
-    assert!(version.is_err());
-    assert!(!version.is_ok_and(|v| range.satisfies(&v)));
+    assert!(Range::parse(range).is_ok());
+    assert!(Version::parse(version).is_err());
+}
+
+#[test]
+fn upstream_range_parse_fixtures() {
+    // The public API does not expose loose or includePrerelease modes.
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/range-parse.json")).unwrap();
+    let cases: Vec<(String, Option<String>)> =
+        serde_json::from_value(fixture["cases"].clone()).unwrap();
+    assert_eq!(cases.len(), 348);
+    for (input, expected) in cases {
+        let actual = Range::parse(&input).ok().map(|range| range.to_string());
+        assert_eq!(actual, expected, "input: {input:?}");
+    }
 }
 
 struct FailingWriter {
@@ -270,69 +282,27 @@ fn prerelease_restriction() {
 
 #[test]
 fn parse_valid_and_display_cases() {
-    assert_display_case("0.1.20 || 1.2.4", "0.1.20||1.2.4");
-    assert_display_case(">=0.2.3 || <0.0.1", ">=0.2.3||<0.0.1");
-    assert_display_case("||", "*");
-    assert_display_case("2.x.x", ">=2.0.0 <3.0.0-0");
-    assert_display_case("1.2.x", ">=1.2.0 <1.3.0-0");
-    assert_display_case("1 - 2", ">=1.0.0 <3.0.0-0");
-    assert_display_case("1.0 - 2.0", ">=1.0.0 <2.1.0-0");
     assert_display_case("^1.0.0", ">=1.0.0 <2.0.0-0");
-    assert_display_case("1.0.0", "1.0.0");
     assert_display_case("=1.0.0", "1.0.0");
-    assert_display_case("0", "<1.0.0-0");
     assert_display_case("~0.x.0", "<1.0.0-0");
     assert_display_case("~1.x.0", ">=1.0.0 <2.0.0-0");
-    assert_display_case("*", "*");
     assert_display_case("+1", "*");
     assert_display_case("+1.x.5", "*");
     assert_display_case("* || ^1.2.3", "*");
-    assert_display_case(">X", "<0.0.0-0");
-    assert_display_case("<X", "<0.0.0-0");
-    assert_display_case("<x <* || >* 2.x", "<0.0.0-0");
     assert_display_case(
         ">=1.0.0 <2.0.0 || >=2.0.0 <3.0.0",
         ">=1.0.0 <2.0.0||>=2.0.0 <3.0.0",
     );
-    assert_display_case("~> 1", ">=1.0.0 <2.0.0-0");
-    assert_display_case("~ 1.0", ">=1.0.0 <1.1.0-0");
     assert_display_case("~v0.5.2-pre", ">=0.5.2-pre <0.6.0-0");
-    assert_display_case("1.2.x || 2.x", ">=1.2.0 <1.3.0-0||>=2.0.0 <3.0.0-0");
-    assert_display_case("2.*.*", ">=2.0.0 <3.0.0-0");
-    assert_display_case("1.2.*", ">=1.2.0 <1.3.0-0");
-    assert_display_case("1.2.* || 2.*", ">=1.2.0 <1.3.0-0||>=2.0.0 <3.0.0-0");
-    assert_display_case("2", ">=2.0.0 <3.0.0-0");
-    assert_display_case("2.3", ">=2.3.0 <2.4.0-0");
-    assert_display_case("~0.0.1", ">=0.0.1 <0.1.0-0");
     assert_display_case("~x", "*");
     assert_display_case("~2", ">=2.0.0 <3.0.0-0");
-    assert_display_case("~>1", ">=1.0.0 <2.0.0-0");
-    assert_display_case("~1.0", ">=1.0.0 <1.1.0-0");
     assert_display_case("~ 1.0.3", ">=1.0.3 <1.1.0-0");
-    assert_display_case("~2.4", ">=2.4.0 <2.5.0-0");
-    assert_display_case("~>3.2.1", ">=3.2.1 <3.3.0-0");
-    assert_display_case("^0.1", ">=0.1.0 <0.2.0-0");
-    assert_display_case("^1.0", ">=1.0.0 <2.0.0-0");
-    assert_display_case("^1.2", ">=1.2.0 <2.0.0-0");
     assert_display_case("^=1", ">=1.0.0 <2.0.0-0");
     assert_display_case(LONG_CARET_EQUALS_NUMERIC, ">=1.0.0 <2.0.0-0");
-    assert_display_case("^0.0.1", ">=0.0.1 <0.0.2-0");
-    assert_display_case("^0.0.1-beta", ">=0.0.1-beta <0.0.2-0");
     assert_display_case("^x", "*");
     assert_display_case("^ 1.2.3", ">=1.2.3 <2.0.0-0");
-    assert_display_case("<=1.2.3", "<=1.2.3");
-    assert_display_case("<1.2.3", "<1.2.3");
-    assert_display_case("<1", "<1.0.0-0");
-    assert_display_case(">=1", ">=1.0.0");
-    assert_display_case("<1.2", "<1.2.0-0");
     assert_display_case("^1.2 ^1", ">=1.2.0 <2.0.0-0 >=1.0.0");
     assert_display_case("<=7.x", "<8.0.0-0");
-    assert_display_case("1.2 - 3.4", ">=1.2.0 <3.5.0-0");
-    assert_display_case("1.2.3 - 3.4", ">=1.2.3 <3.5.0-0");
-    assert_display_case(">1", ">=2.0.0");
-    assert_display_case(">1.2", ">=1.3.0");
-    assert_display_case("x", "*");
-    assert_display_case("=x", "*");
     assert_display_case("==x", "*");
     assert_display_case("vx", "*");
     assert_display_case("vx.x.x-rc.0", "*");
@@ -512,12 +482,6 @@ fn parse_invalid_cases() {
     assert_invalid_range("vx-rc.0");
     assert_invalid_range("vx..0");
     assert_invalid_range("vx.x-rc.0");
-    assert_invalid_range("1.x.5");
-    assert_invalid_range("1.*.5");
-    assert_invalid_range("1.x.5 || 2.x");
-    assert_invalid_range("x.1");
-    assert_invalid_range("x.1.2");
-    assert_invalid_range("x.x.1");
     assert_invalid_range("vx.x.1-rc.0");
     assert_invalid_range(LONG_VX_PARTIAL_WILDCARD);
     assert_invalid_range("vx.x.x-rc.");
@@ -526,23 +490,18 @@ fn parse_invalid_cases() {
     assert_invalid_range("v1+meta.");
     assert_invalid_range("01.0.0");
     assert_invalid_range("1a.0.0");
-    assert_invalid_range("9007199254740992.0.0");
     assert_invalid_range(">");
-    assert_invalid_range(">=");
     assert_invalid_range("> ");
     assert_invalid_range("> 1.2.3+");
     assert_invalid_range("> 1.2.3+bad!");
     assert_invalid_range("<");
     assert_invalid_range("<=");
     assert_invalid_range("=");
-    assert_invalid_range("^");
-    assert_invalid_range("~");
     assert_invalid_range("~=");
     assert_invalid_range(">= || 1.0.0");
     assert_invalid_range("1.0.0 >=");
     assert_invalid_range("10000000000000000");
     assert_invalid_range("1.0.0 -");
-    assert_invalid_range("- 2.0.0");
     assert_invalid_range("1.0.0 - 2.0.0 - 3.0.0");
     assert_invalid_range(">>1.0.0");
     assert_invalid_range("><1.0.0");
@@ -581,7 +540,6 @@ fn parse_invalid_cases() {
     assert_invalid_range("^00.0.0");
     assert_invalid_range("~0.00.0");
     assert_invalid_range(">=0.0.00");
-    assert_invalid_range("^9007199254740991.0.0");
 }
 
 #[test]
