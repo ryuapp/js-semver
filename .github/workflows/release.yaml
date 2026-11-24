@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
-      - uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
+      - uses: actions-rust-lang/setup-rust-toolchain@v2.0.1
         with:
           rustflags: ""
       - uses: rust-lang/crates-io-auth-action@v1.0.6
